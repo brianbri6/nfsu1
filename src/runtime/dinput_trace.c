@@ -120,7 +120,7 @@ int nfs_dinput_post(uint32_t fn, const uint32_t *a, uint32_t ret) {
         NFS_LOG(WIN32, "  DIACTIONFORMAT@%08X size %u actsize %u datasize %u n %u genre %08X buf %u hInstString %08X map \"%.40s\"",
                 a[1], f[0], f[1], f[2], f[3], f[9], f[10], f[13], (const char *)&f[17]);
         const uint32_t *act = (const uint32_t *)(uintptr_t)f[4];   /* DIACTIONA: 40 bytes (dwActionSize) */
-        for (uint32_t k = 0; k < f[3] && k < 3 && i == 29; k++, act += f[1] / 4)
+        for (uint32_t k = 0; k < f[3] && k < 64 && i == 29; k++, act += f[1] / 4)
             NFS_LOG(WIN32, "    action %u: appdata %08X semantic %08X flags %08X name/resid %08X how %08X",
                     k, act[0], act[1], act[2], act[3], act[9]);   /* dwHow is dword 9 */
     }

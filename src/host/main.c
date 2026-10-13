@@ -140,6 +140,9 @@ static int launch_child(void) {
 }
 
 int main(int argc, char **argv) {
+    /* No Windows error dialogs on the user's desktop: a crash goes to the log
+     * (the crash handler) and the exit code only. Inherited by the child. */
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
     /* 1. The guest range must be reserved before the loader fills it. */
     if (!getenv("NFSU_RECOMP_CHILD")) return launch_child();
     void *hold = guest_range_reserved() ? (void *)(uintptr_t)NFS_GUEST_BASE : NULL;
