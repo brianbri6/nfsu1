@@ -17,6 +17,9 @@
 #include "nfs_log.h"
 #include "nfs_runtime.h"
 #include <stdlib.h>
+#ifndef DIGDD_PEEK
+#define DIGDD_PEEK 1
+#endif
 
 /* ---- synthetic input (testing without focus) ----
  * NFSU_TAP="appdata@ms[,appdata@ms...]" (hex appdata, ms since start):
@@ -147,7 +150,13 @@ int nfs_dinput_post(uint32_t fn, const uint32_t *a, uint32_t ret) {
 typedef HRESULT (__stdcall *getdata_t)(void *, DWORD, void *, DWORD *, DWORD);
 static getdata_t g_orig_getdata;
 static HRESULT __stdcall hk_getdata(void *dev, DWORD cb, void *od, DWORD *cnt, DWORD flags) {
+    static int bg = -1;
+    if (bg < 0) { const char *e = getenv("NFSU_BACKGROUND"); bg = e && *e == '1'; }
     HRESULT hr = g_orig_getdata(dev, cb, od, cnt, flags);
+    /* Background test runs: the device reads the desktop keyboard even without
+     * focus, so whatever the user types elsewhere would drive the game. Drop
+     * the real events; only NFSU_TAP input reaches the guest. */
+    if (bg && cb == 0x14 && od && cnt && !(flags & DIGDD_PEEK)) { *cnt = 0; hr = 0; }
     if (g_ntap && cb == 0x14 && od && cnt) {
         DWORD want = *cnt;
         uint32_t a[4] = { (uint32_t)(uintptr_t)dev, cb, (uint32_t)(uintptr_t)od, (uint32_t)(uintptr_t)cnt };

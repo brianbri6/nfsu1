@@ -62,6 +62,32 @@ void nfs_report(const char *why, const void *host_ctx) {
             GetModuleFileNameA(m, mod, sizeof mod);
         out(f, "host EIP    : %08X in %s (+0x%X)", c->Eip, mod,
             m ? c->Eip - (DWORD)(uintptr_t)m : 0);
+        /* After a jump into data the caller is only visible on the host stack. */
+        char line[160]; int n = 0;
+        for (int i = 0; i < 8 && readable(c->Esp + 4u * i, 4); i++)
+            n += snprintf(line + n, sizeof line - n, " %08X", *(uint32_t *)(uintptr_t)(c->Esp + 4u * i));
+        out(f, "host stack  :%s", n ? line : " <unreadable>");
+        n = 0;
+        for (int i = 0; i < 32 && readable(c->Eip + i, 1); i++)
+            n += snprintf(line + n, sizeof line - n, " %02X", *(uint8_t *)(uintptr_t)(c->Eip + i));
+        out(f, "bytes @EIP  :%s", n ? line : " <unreadable>");
+        /* Speed.exe timer-callback list (head 0x713C70; walked by 0x652960:
+         * node = { next, ?, fn, arg }): a heap fn here is the known crash. */
+        uint32_t node = readable(0x713C70u, 4) ? *(uint32_t *)0x713C70u : 0;
+        for (int i = 0; i < 16 && node && readable(node, 16); i++) {
+            const uint32_t *w = (const uint32_t *)(uintptr_t)node;
+            out(f, "  timer node %08X: next %08X  %08X  fn %08X  arg %08X", node, w[0], w[1], w[2], w[3]);
+            node = w[0];
+        }
+        for (int i = 0; i < 64 && readable(c->Esp + 4u * i, 4); i++) {
+            uint32_t v = *(uint32_t *)(uintptr_t)(c->Esp + 4u * i);
+            HMODULE vm = NULL; char vn[MAX_PATH];
+            if (v < 0x10000u || !GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                    GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)(uintptr_t)v, &vm)) continue;
+            GetModuleFileNameA(vm, vn, sizeof vn);
+            const char *b = strrchr(vn, '\\');
+            out(f, "  host [esp+%02X] %08X = %s+0x%X", i * 4, v, b ? b + 1 : vn, v - (uint32_t)(uintptr_t)vm);
+        }
     }
     out(f, "guest regs  : EAX=%08X EBX=%08X ECX=%08X EDX=%08X", g_eax, g_ebx, g_ecx, g_edx);
     out(f, "              ESI=%08X EDI=%08X EBP=%08X ESP=%08X", g_esi, g_edi, g_ebp, g_esp);
@@ -134,7 +160,10 @@ static LONG CALLBACK crash_veh(EXCEPTION_POINTERS *ep) {
     int fatal = code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_ILLEGAL_INSTRUCTION ||
                 code == EXCEPTION_INT_DIVIDE_BY_ZERO || code == EXCEPTION_STACK_OVERFLOW ||
                 code == EXCEPTION_PRIV_INSTRUCTION || code == STATUS_HEAP_CORRUPTION;
-    int ours = (pc >= g_host_lo && pc < g_host_hi) || native32_in_guest(pc);
+    /* A jump into data (DEP execute fault) is always ours to report: no
+     * library executes its heap, but a bad guest function pointer does. */
+    int dep = code == EXCEPTION_ACCESS_VIOLATION && ep->ExceptionRecord->ExceptionInformation[0] == 8;
+    int ours = (pc >= g_host_lo && pc < g_host_hi) || native32_in_guest(pc) || dep;
     if (fatal && ours) {
         char why[256];
         if (code == EXCEPTION_ACCESS_VIOLATION)
