@@ -1,0 +1,3 @@
+# Catalog entries that are not code. Excluded entries still get a body, but it
+# is a loud RECOMP_UNIMPL instead of lifted garbage.
+# VA        reason

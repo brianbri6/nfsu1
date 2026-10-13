@@ -1,0 +1,3 @@
+# Instructions where the host gets control first (RECOMP_HOOK -> recomp_hook).
+# Speed.exe (NFSU1) sites only; none yet.
+# VA        reason

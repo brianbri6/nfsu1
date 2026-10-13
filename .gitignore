@@ -1,0 +1,9 @@
+# Everything derived from the game binary stays local (never commit).
+work/
+src/recomp/gen/
+src/recomp/gen_*/
+build/
+logs/
+*.exe
+*.dll
+*.apk
