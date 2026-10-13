@@ -153,8 +153,6 @@ std::chrono::steady_clock::time_point bootDeadline;
 std::string guestThreadFault;
 bool timerTestActive=false;std::vector<uint32_t> timerTestCalls;
 constexpr uint32_t timerTestAddress=0x7b000010u;
-bool generatedTestActive=false;unsigned generatedTestCalls=0;
-constexpr uint32_t generatedTestTarget=0x7b000020u;
 uint32_t read32(uint32_t va);
 // Stall diagnostics: where each guest thread last handed the machine over and
 // what it was waiting for, dumped when the game stops presenting frames.
@@ -546,93 +544,6 @@ void testGuestCriticalSections(){
     if(!okay)throw GuestStop("Guest critical-section retirement self-check failed");
     NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Guest critical sections passed recursion, owner, guards, deferred retirement and reinitialization");
 }
-uint32_t dynamicThunkAddress{};
-void generatedTestCallback(){++generatedTestCalls;ret(read32(arg(0)),0);}
-void dynamicThunk(){
-    uint32_t start=dynamicThunkAddress,pc=start;
-    if(!memory->readable(start,5)||read32(start)!=0x24748b56u||*static_cast<uint8_t*>(ptr(start+4,1))!=8)
-        throw GuestStop("Invalid generated callback at "+hex(start));
-    uint32_t originalEsi=g_esi,esi=0,eax=g_eax,ecx=g_ecx,originalEsp=g_esp;
-    unsigned saved=0,arguments=0,totalArguments=0;bool pending=false,stackCleared=false,popped=false,compared=false;int comparison=0;
-    auto byte=[&](){return *static_cast<const uint8_t*>(ptr(pc++,1));};
-    auto word=[&](){uint32_t value=read32(pc);pc+=4;return value;};
-    for(unsigned steps=0;steps<4096&&pc-start<65536;++steps){
-        uint32_t instruction=pc;uint8_t op=byte();
-        if(op==0x56){if(!saved){saved=1;}else{++arguments;++totalArguments;pending=true;stackCleared=false;}continue;}
-        if(op==0xe8&&pending){int32_t delta=static_cast<int32_t>(word());uint32_t target=pc+delta;
-            if(!recomp_lookup(target)&&!(generatedTestActive&&target==generatedTestTarget))throw GuestStop("Generated callback calls unlifted "+hex(target));
-            eax=callGuest(target,{esi},4);pending=false;continue;}
-        if(op==0x83){uint8_t form=byte(),delta=byte();
-            if(form==0xc6){esi+=int8_t(delta);compared=false;continue;}
-            if(form==0xc4&&uint32_t(int32_t(int8_t(delta)))==arguments*4&&!pending){stackCleared=true;arguments=0;compared=false;continue;}
-        }
-        if(op==0x81){uint8_t form=byte();uint32_t delta=word();
-            if(form==0xc6){esi+=delta;compared=false;continue;}
-            if(form==0xc4&&delta==arguments*4&&!pending){stackCleared=true;arguments=0;compared=false;continue;}
-        }
-        if(op==0x89){uint8_t form=byte();uint32_t offset;
-            if(form==0x86)offset=word();else if(form==0x46)offset=byte();else throw GuestStop("Generated callback store form pending");
-            write32(esi+offset,eax);continue;}
-        if(op==0x8b){uint8_t form=byte();
-            if(form==0x74||form==0xb4){uint8_t sib=byte();uint32_t offset=form==0x74?uint32_t(int32_t(int8_t(byte()))):word();
-                if(sib==0x24&&saved&&offset==4*(saved+arguments)+4){esi=read32(originalEsp+4);continue;}}
-            if(form==0x46){eax=read32(esi+byte());continue;}
-            if(form==0x06){eax=read32(esi);continue;}
-            if(form==0x4e){ecx=read32(esi+uint32_t(int32_t(int8_t(byte()))));continue;}
-            if(form==0x8e){ecx=read32(esi+word());continue;}
-            if(form==0x0e){ecx=read32(esi);continue;}
-            if(form==0xc1){eax=ecx;continue;}
-        }
-        if(op==0x3b&&byte()==0xc1){comparison=int32_t(eax)<int32_t(ecx)?-1:int32_t(eax)>int32_t(ecx)?1:0;compared=true;continue;}
-        if(op==0x0f&&byte()==0xaf){uint8_t form=byte();
-            if(form==0x46){eax*=read32(esi+uint32_t(int32_t(int8_t(byte()))));compared=false;continue;}
-            if(form==0x86){eax*=read32(esi+word());compared=false;continue;}
-            if(form==0x06){eax*=read32(esi);compared=false;continue;}
-        }
-        if(op>=0x7c&&op<=0x7f&&compared){int8_t delta=int8_t(byte());bool taken=op==0x7c?comparison<0:op==0x7d?comparison>=0:op==0x7e?comparison<=0:comparison>0;
-            if(taken){uint32_t target=pc+int32_t(delta);if(target<start||target-start>=65536)throw GuestStop("Generated callback branch outside budget");pc=target;}continue;}
-        if(op==0xc6&&byte()==0x46&&byte()==0&&byte()==0){*static_cast<uint8_t*>(ptr(esi,1))=0;continue;}
-        if(op==0x03||op==0x2b){uint8_t form=byte();uint32_t offset;
-            if(form==0x46)offset=uint32_t(int32_t(int8_t(byte())));else if(form==0x86)offset=word();else if(form==0x06)offset=0;else throw GuestStop("Generated callback arithmetic form pending");
-            if(op==0x03)eax+=read32(esi+offset);else eax-=read32(esi+offset);compared=false;continue;}
-        if(op==0x5e&&stackCleared&&!pending){popped=true;continue;}
-        if(op==0xc3&&popped&&saved&&totalArguments>0&&!arguments){g_eax=eax;g_ecx=ecx;g_esi=originalEsi;g_esp=originalEsp+4;
-            static unsigned completed=0;if(++completed<=3)NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Generated x86 callback translated: %08x, %u operations",start,steps+1);
-            return;}
-        uint32_t fault=instruction;
-        if(memory->readable(fault,32)){
-            const auto* raw=static_cast<const uint8_t*>(ptr(fault,32));std::ostringstream dump;
-            for(unsigned i=0;i<32;++i)dump<<std::hex<<std::setw(2)<<std::setfill('0')<<unsigned(raw[i]);
-            NFS_RUNTIME_LOG(ANDROID_LOG_WARN,"NFSU1","Generated callback start=%08x offset=%03x bytes=%s",start,fault-start,dump.str().c_str());
-        }
-        throw GuestStop("Generated callback opcode pending at "+hex(fault));
-    }
-    NFS_RUNTIME_LOG(ANDROID_LOG_WARN,"NFSU1","Generated callback budget reached start=%08x pc=%08x arguments=%u",start,pc,arguments);
-    throw GuestStop("Generated callback did not return at "+hex(start));
-}
-void testGeneratedCallbacks(){
-    uint32_t code=allocate(2048),data=allocate(840);std::vector<uint8_t> bytes;
-    auto emit=[&](std::initializer_list<uint8_t> values){bytes.insert(bytes.end(),values.begin(),values.end());};
-    auto word=[&](uint32_t value){for(unsigned i=0;i<4;++i)bytes.push_back(uint8_t(value>>(i*8)));};
-    emit({0x56,0x8b,0x74,0x24,0x08});
-    for(unsigned i=0;i<100;++i){emit({0x56,0xe8});word(generatedTestTarget-(code+uint32_t(bytes.size())+4));emit({0x89,0x46,0x04,0x83,0xc6,0x08});}
-    emit({0x8b,0xb4,0x24});word(408);emit({0x81,0xc6});word(804);
-    emit({0x8b,0x06,0x8b,0x4e,0x04,0x3b,0xc1,0x7f,0x02,0x8b,0xc1,0x0f,0xaf,0x46,0x04,0x89,0x46,0x14,
-        0x03,0x46,0x04,0x89,0x46,0x18,0x2b,0x46,0x04,0x89,0x46,0x1c,0x81,0xc4});word(400);emit({0x5e,0xc3});
-    std::memcpy(ptr(code,bytes.size()),bytes.data(),bytes.size());std::memset(ptr(data,840),0xa5,840);
-    generatedTestActive=true;generatedTestCalls=0;
-    try{
-        for(auto values:{std::array<int32_t,2>{-4,5},std::array<int32_t,2>{-2,-5},std::array<int32_t,2>{INT32_MAX,2}}){
-            write32(data+804,uint32_t(values[0]));write32(data+808,uint32_t(values[1]));
-            uint32_t expected=uint32_t(std::max(values[0],values[1]))*uint32_t(values[1]);
-            if(callGuest(code,{data},4)!=expected||read32(data+824)!=expected||read32(data+828)!=expected+uint32_t(values[1])||read32(data+832)!=expected||read32(data+836)!=0xa5a5a5a5u)
-                throw GuestStop("Generated callback long routine/signed clamp failed");
-        }
-        if(generatedTestCalls!=300)throw GuestStop("Generated callback call count failed");
-    }catch(...){generatedTestActive=false;heaps->free(GuestHeaps::process,code);heaps->free(GuestHeaps::process,data);throw;}
-    generatedTestActive=false;heaps->free(GuestHeaps::process,code);heaps->free(GuestHeaps::process,data);
-    NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Generated callbacks passed 300 calls, long context reload, signed clamps, 32-bit multiply/add/subtract, stack cleanup and guards");
-}
 } // namespace
 
 #ifdef NFS_SERVER_DLL
@@ -675,12 +586,13 @@ extern "C" recomp_func_t recomp_lookup(uint32_t va) {
     static const DispatchHash hash;
     return hash.find(va);
 }
+extern "C" recomp_func_t nfs_abk_lookup(uint32_t va);  // src/runtime/nfs_abk.h
+extern "C" int nfs_guest_readable(uint32_t va,uint32_t n){return memory&&memory->readable(va,n);}
 extern "C" recomp_func_t recomp_lookup_manual(uint32_t va) {
     if(timerTestActive&&va==timerTestAddress)return timerTestCallback;
-    if(generatedTestActive&&va==generatedTestTarget)return generatedTestCallback;
-    if(va>=GuestHeaps::firstArena&&va<GuestHeaps::firstArenaEnd&&memory&&memory->readable(va,5)&&read32(va)==0x24748b56u&&*static_cast<const uint8_t*>(ptr(va+4,1))==8){
-        dynamicThunkAddress=va;return dynamicThunk;
-    }
+    // Routines of EA's sound banks run from the heap: their lifted copies (nfs_abk.h).
+    if((va>=GuestHeaps::firstArena&&va<GuestHeaps::firstArenaEnd)||(va>=GuestHeaps::secondArena&&va-GuestHeaps::secondArena<GuestHeaps::secondArenaSize))
+        if(recomp_func_t fn=nfs_abk_lookup(va))return fn;
     return nfs_override_lookup(va);
 }
 extern "C" recomp_func_t recomp_lookup_import(uint32_t va) {
@@ -743,7 +655,6 @@ std::string connectGuestRuntime(const char* executable) {
         testGuestTimers();
         testGuestFileTime();
         testGuestCriticalSections();
-        testGeneratedCallbacks();
         // Restore a clean CPU state before executing the real CRT entry.
         fresh.load();
         NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Entering actual lifted CRT entry %08x",entry);

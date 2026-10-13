@@ -26,9 +26,10 @@ The x86 executable is translated function by function into C with a patched [pcr
 | Function catalog | ✅ 22,751 functions; seeds from aligned data pointers and 191 vtables |
 | Lift to C | ✅ 0 lift failures, 3 hand-written overrides (CPU probe, CRT memmove) |
 | Windows host: build and link | ✅ |
-| Windows host: boot | 🔧 CRT start-up and static initializers — in progress |
-| First frame, menus, races | ⏳ |
-| Android APK | ⏳ |
+| Sound-bank code (x86 routines inside EA `.abk` banks) | ✅ 23 distinct blocks lifted ahead of time, matched by content at run time |
+| Windows host: boot | ✅ intro videos, front end, profile load, story-mode video |
+| First frame, menus, races | 🔧 menus reached; races not tested yet |
+| Android APK | 🔧 arm64 build installs and reaches the menus |
 | Widescreen | ⏳ |
 
 ### Layout
@@ -40,6 +41,7 @@ scripts/    lift driver, seed generation (vtables, aligned data pointers)
 src/        Windows host, runtime, Win32 shims, logging
 work/       (local only) analysis copy of Speed.exe, catalog, seeds
 src/recomp/gen/  (local only) generated C
+src/recomp/gen_abk/  (local only) generated C of the sound-bank routines
 ```
 
 ### Building (Windows)
@@ -51,6 +53,9 @@ source scripts/vsenv.sh x86
 python scripts/data_seeds.py work/Speed.analysis.exe work/seeds_all.json   # after copying Speed.exe to work/
 python scripts/run_lift.py catalog work/Speed.analysis.exe work/seeds_all.json work/catalog.json
 python scripts/run_lift.py lift work/Speed.analysis.exe work/catalog.json src/recomp/gen
+python scripts/abk_module.py "../Need for Speed Underground" work/abk_analysis.dll work/abk_seeds.json src/recomp/gen_abk/abk_blocks.c
+python scripts/run_lift.py catalog work/abk_analysis.dll work/abk_seeds.json work/abk_catalog.json
+python scripts/run_lift.py lift work/abk_analysis.dll work/abk_catalog.json src/recomp/gen_abk --prefix abk_
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl
 cmake --build build
 build/NFSU-Recompiled.exe --windowed
@@ -90,9 +95,10 @@ El ejecutable x86 se traduce función a función a C con una versión parcheada 
 | Catálogo de funciones | ✅ 22.751 funciones; semillas de punteros alineados en datos y de 191 vtables |
 | Traducción a C | ✅ 0 fallos, 3 reemplazos escritos a mano (detección de CPU, memmove de la CRT) |
 | Host de Windows: compilación y enlazado | ✅ |
-| Host de Windows: arranque | 🔧 inicio de la CRT e inicializadores estáticos, en curso |
-| Primer fotograma, menús, carreras | ⏳ |
-| APK de Android | ⏳ |
+| Código de los bancos de sonido (rutinas x86 dentro de los `.abk` de EA) | ✅ 23 bloques distintos traducidos de antemano, reconocidos por contenido en ejecución |
+| Host de Windows: arranque | ✅ vídeos de introducción, menú principal, carga de perfil, vídeo del modo historia |
+| Primer fotograma, menús, carreras | 🔧 llega a los menús; carreras aún sin probar |
+| APK de Android | 🔧 la versión arm64 se instala y llega a los menús |
 | Widescreen | ⏳ |
 
 ### Compilar (Windows)

@@ -18,6 +18,16 @@ if(NOT GEN_SOURCES)
   message(FATAL_ERROR "No generated code in ${GEN_DIR}: run scripts/run_lift.py lift first")
 endif()
 
+# x86 routines of EA's sound banks (Sound/**.abk), lifted from the local banks:
+# scripts/abk_module.py + run_lift.py --prefix abk_ (see src/runtime/nfs_abk.h).
+# Without them the front end dies on its first sound callback, so require them.
+set(ABK_GEN_DIR "${CMAKE_SOURCE_DIR}/src/recomp/gen_abk")
+file(GLOB ABK_GEN_SOURCES CONFIGURE_DEPENDS "${ABK_GEN_DIR}/abk_*.c")
+if(NOT ABK_GEN_SOURCES)
+  message(FATAL_ERROR "No sound-bank code in ${ABK_GEN_DIR}: run scripts/abk_module.py and run_lift.py --prefix abk_ (README)")
+endif()
+list(APPEND GEN_SOURCES ${ABK_GEN_SOURCES})
+
 set(RT "${PCRECOMP}/runtime")
 set(COMMON_DEFS RECOMP_FLAT_MEMORY RECOMP_STRICT_ICALL RECOMP_NATIVE_RANGE _CRT_SECURE_NO_WARNINGS)
 set(COMMON_INC "${RT}/recomp32" "${RT}/native32" "${RT}/hybrid" "${CMAKE_SOURCE_DIR}/src/runtime"
@@ -44,6 +54,7 @@ add_executable(NFSU-Recompiled
   src/host/profiler.c
   src/runtime/nfs_runtime.c
   src/runtime/overrides.c src/runtime/widescreen.c
+  src/runtime/abk_code.c
   src/runtime/d3d9_trace.c
   src/runtime/dinput_trace.c
   src/runtime/native_range.c

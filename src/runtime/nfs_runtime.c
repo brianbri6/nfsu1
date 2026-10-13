@@ -13,6 +13,7 @@
 #include "recomp_trace.h"
 #include "native32.h"
 #include "nfs_runtime.h"
+#include "nfs_abk.h"
 #include "nfs_log.h"
 
 /* The SSE register file (g_xmm, g_mxcsr) is defined by native32 with the
@@ -141,9 +142,21 @@ void recomp_unresolved(const char *kind, uint32_t va, uint32_t from) {
     TerminateProcess(GetCurrentProcess(), 4);
 }
 
-/* ---- manual overrides ---- */
+/* ---- manual overrides, then the lifted routines of loaded sound banks ----
+ * This runs first on EVERY indirect call: Speed.exe targets leave at once, and
+ * each DLL/shim target is checked against the banks only on its first call. */
+int nfs_guest_readable(uint32_t va, uint32_t n) { return readable(va, n); }
+
+#define NOT_BANK 1024
+static volatile uint32_t g_not_bank[NOT_BANK];
 recomp_func_t recomp_lookup_manual(uint32_t va) {
-    return (recomp_func_t)nfs_override_lookup(va);
+    recomp_func_t f = (recomp_func_t)nfs_override_lookup(va);
+    if (f || (va >= 0x00400000u && va < 0x007A0000u)) return f;
+    uint32_t h = (va * 2654435761u) >> 22;
+    if (g_not_bank[h] == va) return NULL;
+    f = nfs_abk_lookup(va);
+    if (!f) g_not_bank[h] = va;
+    return f;
 }
 
 /* ---- host exceptions ----

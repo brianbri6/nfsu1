@@ -49,10 +49,18 @@ endforeach()
 set(SERVER_GEN_DIR "${NFS_ROOT}/src/recomp/gen_server")
 file(GLOB SERVER_GEN_SOURCES CONFIGURE_DEPENDS "${SERVER_GEN_DIR}/server_recomp_*.c")
 list(APPEND ANDROID_GEN_SOURCES ${SERVER_GEN_SOURCES})
+# x86 routines of EA's sound banks, lifted from the local Sound/**.abk
+# (scripts/abk_module.py + run_lift.py --prefix abk_; see src/runtime/nfs_abk.h).
+set(ABK_GEN_DIR "${NFS_ROOT}/src/recomp/gen_abk")
+file(GLOB ABK_GEN_SOURCES CONFIGURE_DEPENDS "${ABK_GEN_DIR}/abk_*.c")
+if(NOT ABK_GEN_SOURCES)
+    message(FATAL_ERROR "No sound-bank code in ${ABK_GEN_DIR}: run scripts/abk_module.py and run_lift.py --prefix abk_")
+endif()
+list(APPEND ANDROID_GEN_SOURCES ${ABK_GEN_SOURCES})
 set_property(GLOBAL PROPERTY JOB_POOLS guest_compile=4)
 add_library(nfs_guest OBJECT ${ANDROID_GEN_SOURCES})
 set_property(TARGET nfs_guest PROPERTY JOB_POOL_COMPILE guest_compile)
-target_include_directories(nfs_guest PRIVATE "${PCRECOMP}/runtime/recomp32" "${GEN_DIR}" "${SERVER_GEN_DIR}")
+target_include_directories(nfs_guest PRIVATE "${PCRECOMP}/runtime/recomp32" "${GEN_DIR}" "${SERVER_GEN_DIR}" "${NFS_ROOT}/src/runtime")
 # RECOMP_LOCAL_REGS: guest registers live in locals of each lifted function
 # (written back at every call and return) so they stay in ARM64 registers.
 # RECOMP_MEM_QUAL=: guest memory accesses are not volatile; -fno-strict-aliasing
@@ -92,7 +100,7 @@ endif()
 add_library(nfsu1_diagnostics SHARED gpu_probe.cpp vulkan_driver.cpp)
 target_link_libraries(nfsu1_diagnostics PRIVATE android log dl)
 target_compile_options(nfsu1_diagnostics PRIVATE -O2 -Wall -Wextra -Werror -Wno-missing-field-initializers)
-add_library(nfsu1_android SHARED main.cpp guest_runtime.cpp d3d9_bridge.cpp vulkan_driver.cpp "${NFS_ROOT}/src/runtime/overrides.c" "${NFS_ROOT}/src/runtime/widescreen.c" $<TARGET_OBJECTS:nfs_guest>)
+add_library(nfsu1_android SHARED main.cpp guest_runtime.cpp d3d9_bridge.cpp vulkan_driver.cpp "${NFS_ROOT}/src/runtime/overrides.c" "${NFS_ROOT}/src/runtime/widescreen.c" "${NFS_ROOT}/src/runtime/abk_code.c" $<TARGET_OBJECTS:nfs_guest>)
 target_include_directories(nfsu1_android SYSTEM PRIVATE "${DXVK_SOURCE}/include/native"
   "${DXVK_SOURCE}/include/native/windows" "${DXVK_SOURCE}/include/native/directx")
 target_include_directories(nfsu1_android PRIVATE "${PCRECOMP}/runtime/recomp32" "${PCRECOMP}/runtime/win32hle" "${NFS_ROOT}/src/runtime")
