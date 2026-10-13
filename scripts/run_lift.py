@@ -43,6 +43,12 @@ def restore_seeds(dis, iat, funcs, seeds):
     pointers that decode as code, so they win: a non-seed start whose decoded
     instructions cover a seed mid-instruction is removed, and every missing
     seed is decoded and added as a start.
+
+    The evidence decides which side is bogus. An aligned data value can still
+    land inside real code (0x680067 is the middle of `call 0x67E1E0` at
+    0x680065), so a seed covered by a function that a direct CALL targets (or
+    that is itself a seed) is the bogus one and is skipped; only an uncalled,
+    unseeded start loses to the seed.
     """
     starts = {}
     for a, f in funcs.items():
@@ -50,21 +56,29 @@ def restore_seeds(dis, iat, funcs, seeds):
             for ins in b.instructions:
                 for k in range(ins.address + 1, ins.address + ins.size):
                     starts.setdefault(k, set()).add(a)
+    called = set()
+    for f in funcs.values():
+        called |= set(f.calls_to)
     missing = [s for s in seeds if s not in funcs]
-    bogus = set()
+    bogus, restore, skipped = set(), [], 0
     for s in missing:
-        bogus |= {a for a in starts.get(s, ()) if a not in seeds}
+        covering = starts.get(s, set())
+        if any(a in called or a in seeds for a in covering):
+            skipped += 1        # real code covers it: the data value was not a pointer
+            continue
+        bogus |= covering
+        restore.append(s)
     for a in bogus:
-        del funcs[a]
+        funcs.pop(a, None)
     added = 0
-    for s in sorted(missing):
+    for s in sorted(restore):
         f = dis.disassemble_function(s, iat)
         if f and f.blocks:
             f.entry_kind = "start"
             funcs[s] = f
             added += 1
-    print(f"[*] Seeds restored: {added} of {len(missing)} missing; "
-          f"{len(bogus)} bogus starts that covered a seed mid-instruction removed")
+    print(f"[*] Seeds restored: {added} of {len(missing)} missing ({skipped} rejected: inside called code); "
+          f"{len(bogus)} uncalled bogus starts that covered a seed removed")
 
 
 def cmd_catalog(exe, seeds_path, out):
