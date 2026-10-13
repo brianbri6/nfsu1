@@ -216,6 +216,8 @@ static void post(uint32_t fn, const uint32_t *a, uint32_t ret) {
  * no fullscreen refresh rate, back-buffer format from the desktop), and the
  * game's borderless window becomes a normal window whose client area is the
  * back buffer, centred on the desktop. The game itself is not told. */
+/* Always 1: NFSU1's host never goes fullscreen (CreateDevice and Reset are
+ * forced windowed; Speed.exe changes no display mode by itself). */
 int g_nfs_windowed = 1;
 
 /* NFSU_BACKGROUND=1 (testing): keep the game running while its window is
@@ -300,7 +302,7 @@ void nfs_d3d9_trace_init(void) {
     if (m) g_mode = !strcmp(m, "full") ? 2 : (!strcmp(m, "0") || !strcmp(m, "off")) ? 0 : 1;
     native32_post_hook = post;
     native32_pre_hook = pre;
-    NFS_LOG(D3D9, "display: %s", g_nfs_windowed ? "windowed (use --fullscreen for fullscreen)" : "fullscreen");
+    NFS_LOG(D3D9, "display: %s", g_nfs_windowed ? "windowed (always)" : "fullscreen");
     if (!g_mode) return;
     native32_post_hook = post;
     NFS_LOG(D3D9, "D3D9 trace: %s", g_mode == 2 ? "full" : "summary");

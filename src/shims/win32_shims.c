@@ -14,6 +14,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
+#include <winsock2.h>
 #include <string.h>
 #include <stdio.h>
 #include <wchar.h>
@@ -244,7 +245,25 @@ static void shim_Direct3DCreate9(void) {
     RET((uint32_t)(uintptr_t)d3d, 1);
 }
 
+/* struct hostent *gethostbyname(name) -- the EA Nation servers (*.ea.com) closed;
+ * resolve the community server instead, as the PC "eanationhub.asi" mod does
+ * (NFSU_ONLINE_SERVER overrides eahub.eu). The Android runtime does the same. */
+static void shim_gethostbyname(void) {
+    const char *name = (const char *)(uintptr_t)ARG(0), *lookup = name;
+    const char *server = getenv("NFSU_ONLINE_SERVER");
+    if (!server || !*server) server = "eahub.eu";
+    if (name) {
+        size_t n = strlen(name);
+        if (!_stricmp(name, "ea.com") || (n > 7 && !_stricmp(name + n - 7, ".ea.com"))) lookup = server;
+    }
+    struct hostent *h = gethostbyname(lookup);
+    NFS_LOG(WIN32, "gethostbyname(\"%s\")%s%s -> %s", name ? name : "(null)", lookup != name ? " via " : "",
+            lookup != name ? lookup : "", h ? "resolved" : "failed");
+    RET((uint32_t)(uintptr_t)h, 1);
+}
+
 native32_shim_t g_nfs_shims[] = {
+    { "gethostbyname", shim_gethostbyname },
     { "GetModuleHandleA", shim_GetModuleHandleA },
     { "GetModuleFileNameA", shim_GetModuleFileNameA },
     { "FindResourceA", shim_FindResourceA },

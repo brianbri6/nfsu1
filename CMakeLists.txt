@@ -64,4 +64,4 @@ set_source_files_properties(src/host/main.c src/runtime/nfs_runtime.c src/runtim
 target_link_options(NFSU-Recompiled PRIVATE
   /BASE:0x60000000 /DYNAMICBASE:NO /LARGEADDRESSAWARE /STACK:0x100000
   /DEBUG /SUBSYSTEM:CONSOLE /INCREMENTAL:NO)
-target_link_libraries(NFSU-Recompiled PRIVATE kernel32 user32 winmm dbghelp)
+target_link_libraries(NFSU-Recompiled PRIVATE kernel32 user32 winmm dbghelp ws2_32)

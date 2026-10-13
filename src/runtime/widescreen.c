@@ -6,13 +6,19 @@
  * Until the NFSUnderground.WidescreenFix sites are located in Speed.exe by
  * their byte patterns, this keeps the same interface with no effect, and a
  * RECOMP_HOOK reaching the host stops loudly (config/hooks.txt is empty).
+ * Shared by the Windows host and the Android runtime.
  */
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "nfs_widescreen.h"
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #include "nfs_runtime.h"
+#elif defined(__ANDROID__)
+#include <android/log.h>
+#endif
 
 void nfs_widescreen_init(const char *game_root) { (void)game_root; }
 void nfs_widescreen_set_resolution(unsigned width, unsigned height) { (void)width; (void)height; }
@@ -23,7 +29,15 @@ void nfs_widescreen_apply_frame_rate(void) {}
 
 void recomp_hook(uint32_t va) {
     char why[96];
-    snprintf(why, sizeof why, "RECOMP_HOOK at 0x%08X but no NFSU1 hook is implemented", va);
+    snprintf(why, sizeof why, "RECOMP_HOOK at 0x%08X but no NFSU1 hook is implemented", (unsigned)va);
+#ifdef _WIN32
     nfs_report(why, 0);
     ExitProcess(3);
+#else
+#ifdef __ANDROID__
+    __android_log_print(ANDROID_LOG_FATAL, "NFSU1", "%s", why);
+#endif
+    fprintf(stderr, "%s\n", why);
+    abort();
+#endif
 }

@@ -150,8 +150,9 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[i], "--game-root") && i + 1 < argc) root_arg = argv[++i];
         else if (!strcmp(argv[i], "--log-dir") && i + 1 < argc) strncpy(logdir, argv[++i], MAX_PATH - 1);
         else if (!strcmp(argv[i], "--trace-native")) native32_trace_native = 1;
-        else if (!strcmp(argv[i], "--fullscreen")) { extern int g_nfs_windowed; g_nfs_windowed = 0; }
-        else if (!strcmp(argv[i], "--windowed")) { extern int g_nfs_windowed; g_nfs_windowed = 1; }
+        /* Windowed only: a fullscreen test run takes the PC display from whoever is using it. */
+        else if (!strcmp(argv[i], "--fullscreen")) fputs("[NFSU:BOOT] --fullscreen ignored: this host only runs windowed\n", stderr);
+        else if (!strcmp(argv[i], "--windowed")) { /* always */ }
         else if (!strcmp(argv[i], "--trace-callbacks")) native32_trace_callbacks = 1;
         else {
             int used = recomp_trace_arg(argc, argv, i);
