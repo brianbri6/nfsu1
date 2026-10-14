@@ -5,8 +5,11 @@
 extern "C" {
 #endif
 
-/* Enable the fix; reads <game_root>/scripts/NFSUnderground2.WidescreenFix.dat. */
+/* Kept for the shared host interface (no data file needed for NFSU1 yet). */
 void nfs_widescreen_init(const char* game_root);
+/* Display width/height (> 4:3 turns the fix on: render size widened, 3D FOV
+ * corrected); 0 keeps the original 4:3 game. */
+void nfs_widescreen_set_display_aspect(float aspect);
 /* The game's render size; call before its HUD draws and on every change. */
 void nfs_widescreen_set_resolution(unsigned width, unsigned height);
 /* HUD offset entries loaded from the .dat (0: elements keep 4:3 anchors). */

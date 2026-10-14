@@ -649,7 +649,11 @@ std::string connectGuestRuntime(const char* executable) {
         loadImage(executable);
         if(guestWidescreen){
             nfs_widescreen_init(hostGameRoot.c_str());
-            NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Widescreen: not ported to Speed.exe yet (%d HUD offsets)",nfs_widescreen_hud_entries());
+            // Landscape surface: the long side over the short one.
+            float longSide=float(std::max(displayWidth.load(),displayHeight.load())),shortSide=float(std::min(displayWidth.load(),displayHeight.load()));
+            float aspect=shortSide>0?longSide/shortSide:16.f/9.f;
+            nfs_widescreen_set_display_aspect(aspect);
+            NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Widescreen: render width follows the display aspect %.3f, 3D FOV corrected (front end and HUD still 4:3)",aspect);
         }else NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Widescreen disabled: original 4:3 geometry");
         memory->commit(stackBase,stackSize); memory->commit(tib,0x1000);
         State fresh; fresh.esp=stackBase+stackSize-64; fresh.fs=tib; fresh.load();

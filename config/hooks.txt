@@ -1,3 +1,10 @@
-# Instructions where the host gets control first (RECOMP_HOOK -> recomp_hook).
-# Speed.exe (NFSU1) sites only; none yet.
-# VA        reason
+# Instructions where the host gets control first (RECOMP_HOOK -> recomp_hook in
+# src/runtime/widescreen.c). Each replaces one patch of ThirteenAG's
+# NFSUnderground.WidescreenFix, found by that mod's byte patterns in Speed.exe
+# 1.4; none is a branch target (checked against work/catalog.json).
+# VA        purpose
+0x0040875A  render size: widen D3DPRESENT_PARAMETERS to the display aspect
+0x0040DDE0  FixFOV: per-view vertical scale and constants (after fidiv)
+0x0040DE49  FixFOV: fmul [0.5] -> per-view constant
+0x0040DEC1  FixFOV: fdivr [1.0] -> per-view horizontal scale
+0x0040DEF2  FixFOV: fdivr [1.0] -> per-view constant
