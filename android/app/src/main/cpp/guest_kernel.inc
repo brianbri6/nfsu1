@@ -389,6 +389,66 @@ void compareStringW(){
     auto a=read(arg(2),int32_t(arg(3))),b=read(arg(4),int32_t(arg(5)));
     int result=a.compare(b);ret(result<0?1u:result>0?3u:2u,6);
 }
+// GetDateFormatA / GetTimeFormatA with the en-US pictures (the game stamps profiles
+// and saves). A null SYSTEMTIME means local now; cch 0 asks for the size.
+std::array<uint16_t,8> localSystemTime(uint32_t address){
+    std::array<uint16_t,8> t{};
+    if(address){std::memcpy(t.data(),ptr(address,16),16);return t;}
+    timespec now{};clock_gettime(CLOCK_REALTIME,&now);std::tm local{};time_t seconds=now.tv_sec;localtime_r(&seconds,&local);
+    t={uint16_t(local.tm_year+1900),uint16_t(local.tm_mon+1),uint16_t(local.tm_wday),uint16_t(local.tm_mday),
+       uint16_t(local.tm_hour),uint16_t(local.tm_min),uint16_t(local.tm_sec),uint16_t(now.tv_nsec/1000000)};
+    return t;
+}
+std::string formatPicture(const std::string& picture,const std::array<uint16_t,8>& t){
+    static const char* days[]={"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"};
+    static const char* months[]={"January","February","March","April","May","June","July","August","September","October","November","December"};
+    std::string out;
+    for(size_t i=0;i<picture.size();){
+        char c=picture[i];size_t n=1;while(i+n<picture.size()&&picture[i+n]==c)++n;
+        auto two=[&](unsigned v,bool pad){char b[8];std::snprintf(b,sizeof b,pad?"%02u":"%u",v);out+=b;};
+        if(c=='\''){size_t end=picture.find('\'',i+1);if(end==std::string::npos)end=picture.size();out+=picture.substr(i+1,end-i-1);i=end+1;continue;}
+        unsigned hour12=t[4]%12?t[4]%12:12;
+        switch(c){
+        case 'd':if(n<=2)two(t[3],n==2);else{std::string d=days[t[2]%7];out+=n==3?d.substr(0,3):d;}break;
+        case 'M':if(n<=2)two(t[1],n==2);else{std::string m=months[(t[1]+11)%12];out+=n==3?m.substr(0,3):m;}break;
+        case 'y':if(n<=2)two(t[0]%100,n==2);else two(t[0],false);break;
+        case 'h':two(hour12,n>=2);break;
+        case 'H':two(t[4],n>=2);break;
+        case 'm':two(t[5],n>=2);break;
+        case 's':two(t[6],n>=2);break;
+        case 't':out+=n==1?(t[4]<12?"A":"P"):(t[4]<12?"AM":"PM");break;
+        default:out.append(n,c);
+        }
+        i+=n;
+    }
+    return out;
+}
+void putFormatted(const std::string& text,uint32_t buffer,uint32_t capacity,unsigned argumentCount){
+    uint32_t need=uint32_t(text.size())+1;
+    if(!capacity){ret(need,argumentCount);return;}
+    if(capacity<need){lastError=122;ret(0,argumentCount);return;}
+    std::memcpy(ptr(buffer,need),text.c_str(),need);ret(need,argumentCount);
+}
+void getDateFormatA(){
+    auto t=localSystemTime(arg(2));
+    std::string picture=arg(3)?guestString(arg(3)):(arg(1)&2?"dddd, MMMM d, yyyy":"M/d/yyyy");
+    putFormatted(formatPicture(picture,t),arg(4),arg(5),6);
+}
+void getTimeFormatA(){
+    auto t=localSystemTime(arg(2));uint32_t flags=arg(1);
+    std::string picture=arg(3)?guestString(arg(3)):"h:mm:ss tt";
+    if(flags&8)picture=arg(3)?picture:"HH:mm:ss";
+    if(flags&1)picture=picture.substr(0,picture.find(':'))+(picture.find(' ')!=std::string::npos?picture.substr(picture.find(' ')):"");
+    else if(flags&2){auto a=picture.find(":ss");if(a!=std::string::npos)picture.erase(a,3);}
+    if(flags&4){auto a=picture.find(" tt");if(a!=std::string::npos)picture.erase(a,3);}
+    putFormatted(formatPicture(picture,t),arg(4),arg(5),6);
+}
+// Saves check free space first: report the sector geometry of a roomy disk (2 GB free).
+void getDiskFreeSpaceA(){
+    const uint32_t values[]={8,512,524288,1048576};
+    for(unsigned i=0;i<4;++i)if(arg(1+i))write32(arg(1+i),values[i]);
+    ret(1,5);
+}
 const std::map<std::string,recomp_func_t> windowFunctions={
     {"MessageBoxA",messageBox},
     {"PeekMessageA",peekMessage},{"GetMessageA",getMessage},{"TranslateMessage",translateMessage},{"DispatchMessageA",dispatchMessage},
@@ -439,7 +499,7 @@ const std::map<std::string,recomp_func_t> kernelFunctions={
     {"GetCurrentThreadId",threadId},{"GetVersion",version},{"IsDebuggerPresent",isDebugger},{"IsProcessorFeaturePresent",processorFeature},
     {"SetUnhandledExceptionFilter",setExceptionFilter},{"EncodePointer",encodePointer},{"DecodePointer",encodePointer},
     {"GetACP",getACP},{"GetOEMCP",getOEMCP},{"GetCPInfo",cpInfo},{"GetThreadLocale",threadLocale},
-    {"WideCharToMultiByte",wideToMulti},{"CompareStringW",compareStringW},{"lstrcmpiA",lstrcmpiA},{"MultiByteToWideChar",multiToWide},{"GetStringTypeW",stringTypeW},{"LCMapStringW",mapStringW},
+    {"WideCharToMultiByte",wideToMulti},{"CompareStringW",compareStringW},{"GetDateFormatA",getDateFormatA},{"GetTimeFormatA",getTimeFormatA},{"GetDiskFreeSpaceA",getDiskFreeSpaceA},{"lstrcmpiA",lstrcmpiA},{"MultiByteToWideChar",multiToWide},{"GetStringTypeW",stringTypeW},{"LCMapStringW",mapStringW},
     {"GetTickCount",tickCount},{"QueryPerformanceCounter",performanceCounter},
     {"QueryPerformanceFrequency",performanceFrequency},{"GetSystemTimeAsFileTime",systemFileTime},
     {"FileTimeToLocalFileTime",fileTimeToLocalFileTime},{"FileTimeToSystemTime",fileTimeToSystemTime},
