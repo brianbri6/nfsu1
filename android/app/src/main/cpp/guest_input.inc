@@ -386,11 +386,11 @@ void inputDispatch(){
         std::lock_guard<std::mutex> lock(inputMutex);std::memset(ptr(arg(2),object.size),0,object.size);
         if(kind==3){
             if(touchMoved){touchMoved=false;touchSettle=0;
-                // The cursor lives in the game's render resolution (its mode table:
-                // index 0x700E70, widths 0x70100C, heights 0x701020), not the window's.
-                uint32_t mode=read32(0x700e70);std::pair<int32_t,int32_t> point;
-                if(mode<5){int32_t w=int32_t(read32(0x70100c+4*mode)),h=int32_t(read32(0x701020+4*mode));
-                    point={std::min(int32_t(guestPointerX.load()*float(w)),w-1),std::min(int32_t(guestPointerY.load()*float(h)),h-1)};}
+                // The cursor lives in the game's render size: the back buffer it
+                // asked for (D3DPRESENT_PARAMETERS at 0x71A96C), which follows the
+                // menu resolution and the widescreen widening.
+                int32_t w=int32_t(read32(0x71a96c)),h=int32_t(read32(0x71a970));std::pair<int32_t,int32_t> point;
+                if(w>0&&h>0&&w<=8192&&h<=8192)point={std::min(int32_t(guestPointerX.load()*float(w)),w-1),std::min(int32_t(guestPointerY.load()*float(h)),h-1)};
                 else point=pointerInWindow();
                 inputMouseX=point.first-int32_t(read32(gameMouse+4));inputMouseY=point.second-int32_t(read32(gameMouse+8));}
             else if(++touchSettle>=1&&!touchButtons.empty()){inputMouseButtons[0]=touchButtons.front();touchButtons.pop_front();}

@@ -8,3 +8,5 @@
 0x0040DE49  FixFOV: fmul [0.5] -> per-view constant
 0x0040DEC1  FixFOV: fdivr [1.0] -> per-view horizontal scale
 0x0040DEF2  FixFOV: fdivr [1.0] -> per-view constant
+0x00409EB8  front-end arrow: cursor pixels -> 640x480 FE units (eax=Y, ecx=X)
+0x00401832  front-end arrow: cursor pixels -> 640x480 FE units (edx=Y, eax=X)

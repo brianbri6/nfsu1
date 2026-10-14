@@ -32,6 +32,17 @@ static float s_display_aspect;          /* 0: off, the game keeps 4:3 */
 static float s_aspect = 4.0f / 3.0f;    /* the render target's, once widened */
 /* FOV constants of the three reads after 0x40DDD2, chosen per view id. */
 static double s_fov_scale[3] = {1.0, 0.5, 1.0};
+static int s_fe_cursor;                 /* draw the front-end arrow in FE units */
+
+/* The front end's arrow (sub_004F3030) takes the cursor as 640x480 front-end
+ * units while the cursor and its hit tests are in render pixels; they only
+ * agree at 640x480. Hosts without the Win32 cursor (Android) draw the arrow. */
+static uint32_t fe_units(uint32_t pixels, uint32_t size_va, float units) {
+    uint32_t size = MEM32(size_va);
+    if (!size || size > 8192) return pixels;
+    return (uint32_t)(int32_t)lroundf((float)(int32_t)pixels * units / (float)size);
+}
+void nfs_frontend_cursor_units(int on) { s_fe_cursor = on; }
 
 
 void nfs_widescreen_init(const char *game_root) { (void)game_root; }
@@ -47,6 +58,13 @@ void nfs_widescreen_set_frame_rate(unsigned fps) { (void)fps; }
 void nfs_widescreen_apply_frame_rate(void) {}
 
 void recomp_hook(uint32_t va) {
+    /* Arrow draw calls: X/Y loaded, about to be pushed for sub_004F3030. */
+    if (va == 0x00409EB8u || va == 0x00401832u) {
+        if (!s_fe_cursor) return;
+        if (va == 0x00409EB8u) { g_ecx = fe_units(g_ecx, 0x0071A96Cu, 640.0f); g_eax = fe_units(g_eax, 0x0071A970u, 480.0f); }
+        else { g_eax = fe_units(g_eax, 0x0071A96Cu, 640.0f); g_edx = fe_units(g_edx, 0x0071A970u, 480.0f); }
+        return;
+    }
     if (s_display_aspect <= 0.0f) return;
     switch (va) {
     /* End of the resolution setter (0x4086B0, width pushed, height in esi):
