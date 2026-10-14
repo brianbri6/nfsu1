@@ -293,7 +293,7 @@ uint32_t nextRegistryHandle=0xf0050000;
 void registryOpen(uint32_t output,uint32_t argc){
     auto key=lower(guestString(arg(1)));
     NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Registry open %08x\\%s",arg(0),key.c_str());
-    if(arg(0)!=0x80000002u||(key!="software\\ea games\\need for speed underground 2"&&key!="software\\electronic arts\\ea games\\need for speed underground 2")){
+    if(arg(0)!=0x80000002u||(key!="software\\ea games\\need for speed underground"&&key!="software\\ea games\\nfs underground")){
         if(output)write32(output,0);ret(2,argc);return;
     }
     if(gameRegistry.empty()){

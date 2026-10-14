@@ -111,31 +111,29 @@ final class RacingControlsView extends View {
         add(w-118,16,46,racing?"menu":"wheel",MODE);
         if(racing) {
             add(16,16,46,"pause",1);
-            // Free-roam actions of the PC keyboard defaults (Opciones > Controles).
-            add(72,16,46,"map",0x32);     // Mapa del mundo: M
-            add(128,16,46,"sms",0x0f);    // Leer SMS: Tab
-            add(184,16,46,"reset",0x13);  // Reiniciar coche: R
+            // NFSU1 keyboard defaults ("NFS Underground Game" action map): no map or SMS.
+            add(72,16,46,"reset",0x13);   // Respot: R
             if(style.equals("classic")) {
                 add(20,bottom-92,92,"left",0xcb);
                 add(124,bottom-92,92,"right",0xcd);
-                add(228,bottom-66,62,"handbrake",0x39);
-                add(30,bottom-160,52,"shiftUp",0x2a);
-                add(92,bottom-160,52,"shiftDown",0x1d);
+                add(228,bottom-66,62,"handbrake",0x2a);   // Handbrake: LShift
+                add(30,bottom-160,52,"shiftUp",0x1e);     // Shift Up: A
+                add(92,bottom-160,52,"shiftDown",0x2c);   // Shift Down: Z
                 add(154,bottom-160,52,"camera",0x2e);
                 add(w-110,bottom-150,90,150,PEDAL,"gas",0xc8,0xFF1E7A4A);
                 add(w-206,bottom-108,82,108,PEDAL,"brake",0xd0,0xFF8A2A2A);
-                add(w-290,bottom-72,70,"nitro",0x38);
+                add(w-290,bottom-72,70,"nitro",0x39);     // Nitrous: Space
             } else {
                 boolean xbox=style.equals("xbox");
                 add(24,bottom-160,160,160,WHEEL,"stick",STICK,0);
                 add(w-106,bottom-150,86,150,PEDAL,"gas",0xc8,0xFF1E7A4A);
                 add(w-198,bottom-108,78,108,PEDAL,"brake",0xd0,0xFF8A2A2A);
-                add(w-252,bottom-178,58,xbox?"A":"×",0x39);
-                add(w-186,bottom-238,58,xbox?"B":"○",0x38);
+                add(w-252,bottom-178,58,xbox?"A":"×",0x2a);
+                add(w-186,bottom-238,58,xbox?"B":"○",0x39);
                 add(w-318,bottom-238,58,xbox?"X":"□",0x2e);
                 add(w-252,bottom-298,58,xbox?"Y":"△",0x30);
-                add(30,bottom-228,52,"shiftUp",0x2a);
-                add(92,bottom-228,52,"shiftDown",0x1d);
+                add(30,bottom-228,52,"shiftUp",0x1e);
+                add(92,bottom-228,52,"shiftDown",0x2c);
             }
         } else {
             float pad=60,cx=24+pad*1.5f,cy=bottom-pad*1.5f;
@@ -144,7 +142,7 @@ final class RacingControlsView extends View {
             add(cx-pad*1.5f,cy-pad/2,pad,"left",0xcb);
             add(cx+pad*.5f,cy-pad/2,pad,"right",0xcd);
             add(w-96,bottom-110,76,"accept",0x1c);
-            add(w-176,bottom-62,56,"back",1);
+            add(w-176,bottom-62,56,"back",0x0e);    // Menu Back: Backspace (Esc is pause)
             add(w/2-23,bottom-46,46,"keyboard",TEXT);
         }
         invalidate();
@@ -205,8 +203,8 @@ final class RacingControlsView extends View {
     }
     private int faceColor(Control c) {
         if(!racing||style.equals("classic")||c.icon.length()!=1)return 0;
-        if(c.scan==0x39)return style.equals("xbox")?0xff74df8e:0xff80b8ff;
-        if(c.scan==0x38)return 0xffff7f86;
+        if(c.scan==0x2a)return style.equals("xbox")?0xff74df8e:0xff80b8ff;
+        if(c.scan==0x39)return 0xffff7f86;
         if(c.scan==0x2e)return style.equals("xbox")?0xff80b8ff:0xffdd9cf4;
         return style.equals("xbox")?0xffffd778:0xff74dfb3;
     }

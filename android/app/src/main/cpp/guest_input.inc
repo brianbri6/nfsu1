@@ -6,6 +6,13 @@ std::array<uint8_t,256> inputKeys{};
 std::atomic<bool> inputDrivingMode{false};
 std::array<uint8_t,8> inputMouseButtons{};
 int32_t inputMouseX{},inputMouseY{},inputMouseZ{};
+// Touch as an ABSOLUTE pointer through Speed.exe's relative DirectInput mouse:
+// the game adds each GetDeviceState delta to its cursor in its mouse object
+// (0x706498: +4 x, +8 y, window pixels, clamped to the client rect), so the
+// delta handed out is "finger minus current cursor". Button changes are queued
+// and handed out one poll after the cursor reached the finger.
+constexpr uint32_t gameMouse=0x706498;
+bool touchMoved=false;std::deque<uint8_t> touchButtons;unsigned touchSettle=0;
 struct InputFormatObject {uint32_t offset,type,bytes=1,user=UINT32_MAX;};
 struct InputKeyEvent {uint64_t sequence;uint32_t scan,data,time;};
 struct InputBufferedEvent {uint32_t offset,data,time,sequence,user;};
@@ -377,6 +384,17 @@ void inputDispatch(){
     case 9:{if(!object.acquired){ret(diNotAcquired,3);return;}
         if(arg(1)!=object.size||!arg(2)){ret(diInvalid,3);return;}
         std::lock_guard<std::mutex> lock(inputMutex);std::memset(ptr(arg(2),object.size),0,object.size);
+        if(kind==3){
+            if(touchMoved){touchMoved=false;touchSettle=0;
+                // The cursor lives in the game's render resolution (its mode table:
+                // index 0x700E70, widths 0x70100C, heights 0x701020), not the window's.
+                uint32_t mode=read32(0x700e70);std::pair<int32_t,int32_t> point;
+                if(mode<5){int32_t w=int32_t(read32(0x70100c+4*mode)),h=int32_t(read32(0x701020+4*mode));
+                    point={std::min(int32_t(guestPointerX.load()*float(w)),w-1),std::min(int32_t(guestPointerY.load()*float(h)),h-1)};}
+                else point=pointerInWindow();
+                inputMouseX=point.first-int32_t(read32(gameMouse+4));inputMouseY=point.second-int32_t(read32(gameMouse+8));}
+            else if(++touchSettle>=1&&!touchButtons.empty()){inputMouseButtons[0]=touchButtons.front();touchButtons.pop_front();}
+        }
         for(auto item:object.format){uint32_t index=(item.type>>8)&0xffff,category=item.type&0xff;
             if(kind==2){if(item.bytes==4)write32(arg(2)+item.offset,inputKeys[index]);else *static_cast<uint8_t*>(ptr(arg(2)+item.offset,1))=inputKeys[index];}
             else if(category&3){int32_t value=index==0?inputMouseX:index==1?inputMouseY:inputMouseZ;write32(arg(2)+item.offset,static_cast<uint32_t>(value));}

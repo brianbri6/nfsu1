@@ -5,8 +5,9 @@ case 5:{*argumentCount=1;return device->EvictManagedResources();}
 case 6:{*argumentCount=2;IDirect3D9* object1=nullptr;HRESULT status=device->GetDirect3D(args[1]?&object1:nullptr);if(args[1])write(args[1],SUCCEEDED(status)?wrap(object1,Kind::D3D9):0);return status;}
 case 7:{*argumentCount=2;return device->GetDeviceCaps(static_cast<D3DCAPS9*>(pointer(args[1])));}
 case 8:{*argumentCount=3;return device->GetDisplayMode(static_cast<UINT>(args[1]),static_cast<D3DDISPLAYMODE*>(pointer(args[2])));}
-case 10:{*argumentCount=4;return device->SetCursorProperties(static_cast<UINT>(args[1]),static_cast<UINT>(args[2]),nativeObject<IDirect3DSurface9>(args[3]));}
-case 11:{*argumentCount=4;device->SetCursorPosition(static_cast<int>(args[1]),static_cast<int>(args[2]),static_cast<DWORD>(args[3]));return 0;}
+case 10:{*argumentCount=4;NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","D3D9 SetCursorProperties hotspot %u,%u",unsigned(args[1]),unsigned(args[2]));return device->SetCursorProperties(static_cast<UINT>(args[1]),static_cast<UINT>(args[2]),nativeObject<IDirect3DSurface9>(args[3]));}
+case 11:{*argumentCount=4;static unsigned logged=0;if(++logged<=20||logged%600==0)NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","D3D9 SetCursorPosition %d,%d flags=%u",int(args[1]),int(args[2]),unsigned(args[3]));
+    device->SetCursorPosition(static_cast<int>(args[1]),static_cast<int>(args[2]),static_cast<DWORD>(args[3]));return 0;}
 case 12:{*argumentCount=2;return device->ShowCursor(static_cast<WINBOOL>(args[1]));}
 case 14:{*argumentCount=3;IDirect3DSwapChain9* object2=nullptr;HRESULT status=device->GetSwapChain(static_cast<UINT>(args[1]),args[2]?&object2:nullptr);if(args[2])write(args[2],SUCCEEDED(status)?wrap(object2,Kind::SwapChain):0);return status;}
 case 15:{*argumentCount=1;return device->GetNumberOfSwapChains();}

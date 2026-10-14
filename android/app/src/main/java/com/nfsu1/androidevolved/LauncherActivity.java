@@ -37,16 +37,15 @@ import java.util.concurrent.Executors;
  */
 public final class LauncherActivity extends Activity {
     private static final int REQUEST_DRIVER_ZIP = 45, REQUEST_DRIVER_PROBE = 46;
-    // Launcher accent (shared look with the NFSU2 port).
-    private static final int ACCENT = 0xFF8EE03A;
+    // Launcher accent: Underground orange/red (the NFSU2 port is green).
+    private static final int ACCENT = 0xFFFF7A1A;
     /** {label, guest language name, LANGUAGES/<file>.bin}. */
     private static final String[][] LANGUAGES = {
-        {"Español", "Spanish", "Spanish"}, {"English", "English UK", "English"},
+        {"Español", "Spanish", "Spanish"}, {"English", "English", "English"},
         {"Français", "French", "French"}, {"Deutsch", "German", "German"},
         {"Italiano", "Italian", "Italian"}, {"Nederlands", "Dutch", "Dutch"},
-        {"Svenska", "Swedish", "Swedish"}, {"Dansk", "Danish", "Danish"},
-        {"日本語", "Japanese", "Japanese"}, {"한국어", "Korean", "Korean"},
-        {"繁體中文", "Chinese (Traditional)", "Chinese"}, {"ไทย", "Thai", "Thailand"}
+        {"Svenska", "Swedish", "Swedish"}, {"한국어", "Korean", "Korean"},
+        {"中文", "Chinese", "Chinese"}
     };
 
     private LinearLayout checksList, optionsList;
@@ -113,7 +112,7 @@ public final class LauncherActivity extends Activity {
     private View buildScreen() {
         FrameLayout screen = new FrameLayout(this);
         screen.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                new int[] {0xFF060D08, 0xFF0B2210, 0xFF060D08}));
+                new int[] {0xFF0E0604, 0xFF2E0B05, 0xFF0E0604}));
         LinearLayout columns = new LinearLayout(this);
         columns.setPadding(dp(24), dp(10), dp(24), dp(10));
         screen.addView(columns, new FrameLayout.LayoutParams(-1, -1));
@@ -136,7 +135,7 @@ public final class LauncherActivity extends Activity {
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
         titles.setPadding(dp(14), 0, 0, 0);
-        titles.addView(label("Need for Speed Underground 2", 18, Color.WHITE, true));
+        titles.addView(label("Need for Speed Underground", 18, Color.WHITE, true));
         titles.addView(label("PC · recompilado de forma nativa para Android", 12, 0x99FFFFFF, false));
         header.addView(titles);
         left.addView(header, new LinearLayout.LayoutParams(-1, -2));
@@ -494,7 +493,7 @@ public final class LauncherActivity extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(12), dp(8), dp(12), dp(8));
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0x168EE03A);
+        bg.setColor(0x16FF7A1A);
         bg.setCornerRadius(dp(10));
         row.setBackground(bg);
         row.setClickable(true);
@@ -514,9 +513,9 @@ public final class LauncherActivity extends Activity {
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(16), dp(12), dp(16), dp(12));
         GradientDrawable bg = new GradientDrawable();
-        bg.setColor(0xCC0E1A12);
+        bg.setColor(0xCC1C0D08);
         bg.setCornerRadius(dp(16));
-        bg.setStroke(dp(1), 0x448EE03A);
+        bg.setStroke(dp(1), 0x44FF7A1A);
         card.setBackground(bg);
         return card;
     }
@@ -525,12 +524,12 @@ public final class LauncherActivity extends Activity {
         Button b = new Button(this);
         b.setText(text);
         b.setAllCaps(false);
-        b.setTextColor(primary ? 0xFF0A1C05 : Color.WHITE);
+        b.setTextColor(primary ? 0xFF1F0802 : Color.WHITE);
         b.setTextSize(TypedValue.COMPLEX_UNIT_SP, primary ? 22 : 15);
         b.setTypeface(Typeface.DEFAULT_BOLD);
         b.setLetterSpacing(primary ? .12f : 0f);
         GradientDrawable bg = primary
-                ? new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[] {0xFFB8F25A, 0xFF3FB82A})
+                ? new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[] {0xFFFFB13D, 0xFFE3261B})
                 : new GradientDrawable();
         if (!primary) { bg.setColor(0x22FFFFFF); bg.setStroke(dp(1), 0x55FFFFFF); }
         bg.setCornerRadius(dp(14));
