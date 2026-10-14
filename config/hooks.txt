@@ -26,3 +26,34 @@
 0x004F1FD7  FMV quad extents (FMVWidescreenMode 1)
 0x004F225C  FMV quad extents
 0x004F25D1  FMV quad extents
+0x004F314B  mouse arrow origin after mov [esp+19Ch], 320.0
+0x00415358  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x00415CAD  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x004B7E14  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x004B8C71  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x004C1A39  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x004D1DF9  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x004D516A  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x004D66D1  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x004DC438  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x004E39A8  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x004EAA5A  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x004F7EDF  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x004F7F36  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x0054F09A  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x0054F363  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x005518D8  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x00557EDC  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x00559BAA  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x0055BAEA  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x0055CD90  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x0055D7F8  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x0055F0DA  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x00561C98  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x00562128  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x0056391A  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x00563CFA  mouse hit test after edx = x - 320 -> x - fHudPosX
+0x004B8CF0  mouse hit test after eax = x - 320 -> x - fHudPosX
+0x004D6750  mouse hit test after eax = x - 320 -> x - fHudPosX
+0x004F7D65  mouse hit test after eax = x - 320 -> x - fHudPosX
+0x004F608B  mouse hit test after ecx = x - 320 -> x - fHudPosX

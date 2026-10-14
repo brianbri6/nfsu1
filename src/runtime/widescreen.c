@@ -12,8 +12,9 @@
  * projection scale and centre are data (0x6CC914, 0x6CC910); the 320.0 anchors
  * stored as immediates, the minimap, laps and HUD-element positions (offsets
  * from the mod's .dat, embedded in widescreen_hud.inc) and the FMV quad are
- * hooks. The touch host hands out the mouse cursor in [0, 2*fHudPosX] (the
- * mod's range) and the cursor clamp (0x4131A0) is widened to it.
+ * hooks, as are the 30 mouse hit tests (x - 320 -> x - fHudPosX). The touch
+ * host hands out the mouse cursor in [0, 2*fHudPosX] (the mod's range) and the
+ * cursor clamp (0x4131A0) is widened to it.
  *
  * Off until a host gives the display aspect (Android: the surface; the Windows
  * bring-up host keeps the original 4:3 game).
@@ -43,6 +44,40 @@ void nfs_frontend_cursor_units(int on) { s_fe_cursor = on; }
 /* FixHUD: fHudPosX (centre of the 4:3 HUD in wide HUD units) and the mod's
  * fWidescreenHudOffset (= fHudPosX - 320 with HudAspectRatioConstraint Auto). */
 static float s_hud_pos_x = 320.0f;
+/* Front-end mouse hit tests `reg = x - 320` (the mod repoints the immediate to
+ * -fHudPosX): VA of the next instruction, register (0 eax, 1 ecx, 2 edx). */
+static const struct { uint32_t va; uint8_t reg; } k_hit[] = {
+    { 0x00415358u, 2 },
+    { 0x00415CADu, 2 },
+    { 0x004B7E14u, 2 },
+    { 0x004B8C71u, 2 },
+    { 0x004C1A39u, 2 },
+    { 0x004D1DF9u, 2 },
+    { 0x004D516Au, 2 },
+    { 0x004D66D1u, 2 },
+    { 0x004DC438u, 2 },
+    { 0x004E39A8u, 2 },
+    { 0x004EAA5Au, 2 },
+    { 0x004F7EDFu, 2 },
+    { 0x004F7F36u, 2 },
+    { 0x0054F09Au, 2 },
+    { 0x0054F363u, 2 },
+    { 0x005518D8u, 2 },
+    { 0x00557EDCu, 2 },
+    { 0x00559BAAu, 2 },
+    { 0x0055BAEAu, 2 },
+    { 0x0055CD90u, 2 },
+    { 0x0055D7F8u, 2 },
+    { 0x0055F0DAu, 2 },
+    { 0x00561C98u, 2 },
+    { 0x00562128u, 2 },
+    { 0x0056391Au, 2 },
+    { 0x00563CFAu, 2 },
+    { 0x004B8CF0u, 0 },
+    { 0x004D6750u, 0 },
+    { 0x004F7D65u, 0 },
+    { 0x004F608Bu, 1 },
+};
 typedef struct { uint32_t x, y; float off_x, off_y; } hud_entry;
 static const hud_entry k_hud[] = {
 #include "widescreen_hud.inc"
@@ -107,6 +142,12 @@ void recomp_hook(uint32_t va) {
         return;
     }
     if (s_display_aspect <= 0.0f) return;
+    for (unsigned i = 0; i < sizeof k_hit / sizeof k_hit[0]; i++) {
+        if (k_hit[i].va != va) continue;
+        uint32_t *r = k_hit[i].reg == 0 ? &g_eax : k_hit[i].reg == 1 ? &g_ecx : &g_edx;
+        *r += (uint32_t)(int32_t)lroundf(320.0f - s_hud_pos_x);
+        return;
+    }
     switch (va) {
     /* End of the resolution setter (0x4086B0, width pushed, height in esi):
      * it filled D3DPRESENT_PARAMETERS (0x71A96C) and the screen size globals
@@ -135,6 +176,7 @@ void recomp_hook(uint32_t va) {
     case 0x004F28B3u: wrf(g_esp + 0xA0, s_hud_pos_x); break;
     case 0x004F1E31u: wrf(g_esp + 0x60, s_hud_pos_x); break;
     case 0x004F26E9u: wrf(g_esp + 0x50, s_hud_pos_x); break;
+    case 0x004F314Bu: wrf(g_esp + 0x19C, s_hud_pos_x); break;   /* mouse arrow origin */
     /* Minimap centre `fadd [0x6CC910]` keeps the original 320 (the mod's fMinimapPosX). */
     case 0x0058E5C3u: g_st[0] -= (double)(s_hud_pos_x - 320.0f); break;
     /* Rear-view mirror quad X (440/200/200/440), shifted with the HUD centre. */
