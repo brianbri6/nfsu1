@@ -12,7 +12,10 @@ int32_t inputMouseX{},inputMouseY{},inputMouseZ{};
 // delta handed out is "finger minus current cursor". Button changes are queued
 // and handed out one poll after the cursor reached the finger.
 constexpr uint32_t gameMouse=0x706498;
-bool touchMoved=false;std::deque<uint8_t> touchButtons;unsigned touchSettle=0;
+bool touchMoved=false;std::deque<uint8_t> touchButtons;int64_t touchSettleMs=0;
+// The game reads the mouse several times per frame from different places, and
+// the front end looks at the button edge once per frame: hold every change.
+constexpr int64_t touchHoldMs=60;
 struct InputFormatObject {uint32_t offset,type,bytes=1,user=UINT32_MAX;};
 struct InputKeyEvent {uint64_t sequence;uint32_t scan,data,time;};
 struct InputBufferedEvent {uint32_t offset,data,time,sequence,user;};
@@ -375,25 +378,26 @@ void inputDispatch(){
         if(method==6){if(object.acquired){ret(0x800700aa,3);return;}if(read32(header+16)>4096){ret(diInvalid,3);return;}object.bufferSize=read32(header+16);}
         else write32(header+16,object.bufferSize);
         ret(0,3);return;}
-    case 7:if(!object.size||!object.cooperative){ret(diInvalid,1);return;}if(object.acquired){ret(1,1);return;}
+    case 7:if(kind==3){static unsigned logged=0;if(++logged<=10)NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Mouse Acquire size=%u cooperative=%x acquired=%d",object.size,object.cooperative,int(object.acquired));}
+        if(!object.size||!object.cooperative){ret(diInvalid,1);return;}if(object.acquired){ret(1,1);return;}
         {std::lock_guard<std::mutex> lock(inputMutex);object.sequence=inputSequence;object.pending.clear();object.overflow=false;
          if(kind==4){object.lastValues.clear();for(auto& item:object.format)object.lastValues.push_back(padItemValue(object,item));++inputPadAcquired;
              NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Gamepad acquired by the game: %zu objects",object.format.size());}}
         object.acquired=true;ret(0,1);return;
-    case 8:{bool previous=object.acquired;object.acquired=false;if(previous&&kind==4)--inputPadAcquired;ret(previous?0:1,1);return;}
-    case 9:{if(!object.acquired){ret(diNotAcquired,3);return;}
-        if(arg(1)!=object.size||!arg(2)){ret(diInvalid,3);return;}
+    case 8:{if(kind==3){static unsigned logged=0;if(++logged<=10)NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Mouse Unacquire from %08x",g_cur_func);}
+        bool previous=object.acquired;object.acquired=false;if(previous&&kind==4)--inputPadAcquired;ret(previous?0:1,1);return;}
+    case 9:{if(!object.acquired||arg(1)!=object.size||!arg(2)){
+            if(kind==3){static unsigned logged=0;if(++logged<=10||logged%600==0)NFS_RUNTIME_LOG(ANDROID_LOG_WARN,"NFSU1","Mouse GetDeviceState refused: acquired=%d size=%u want=%u (%u)",int(object.acquired),arg(1),object.size,logged);}
+            ret(!object.acquired?diNotAcquired:diInvalid,3);return;}
         std::lock_guard<std::mutex> lock(inputMutex);std::memset(ptr(arg(2),object.size),0,object.size);
         if(kind==3){
-            if(touchMoved){touchMoved=false;touchSettle=0;
-                // The cursor lives in the game's render size: the back buffer it
-                // asked for (D3DPRESENT_PARAMETERS at 0x71A96C), which follows the
-                // menu resolution and the widescreen widening.
-                int32_t w=int32_t(read32(0x71a96c)),h=int32_t(read32(0x71a970));std::pair<int32_t,int32_t> point;
-                if(w>0&&h>0&&w<=8192&&h<=8192)point={std::min(int32_t(guestPointerX.load()*float(w)),w-1),std::min(int32_t(guestPointerY.load()*float(h)),h-1)};
-                else point=pointerInWindow();
+            if(touchMoved){touchMoved=false;touchSettleMs=steadyMs();
+                // The cursor is in front-end units: menus hit-test it as
+                // (x-320, y-240) and draw the arrow from it (640x480 at any
+                // render size, stretched over the whole screen).
+                std::pair<int32_t,int32_t> point={std::min(int32_t(guestPointerX.load()*640.f),639),std::min(int32_t(guestPointerY.load()*480.f),479)};
                 inputMouseX=point.first-int32_t(read32(gameMouse+4));inputMouseY=point.second-int32_t(read32(gameMouse+8));}
-            else if(++touchSettle>=1&&!touchButtons.empty()){inputMouseButtons[0]=touchButtons.front();touchButtons.pop_front();}
+            else if(!touchButtons.empty()&&steadyMs()-touchSettleMs>=touchHoldMs){inputMouseButtons[0]=touchButtons.front();touchButtons.pop_front();touchSettleMs=steadyMs();}
         }
         for(auto item:object.format){uint32_t index=(item.type>>8)&0xffff,category=item.type&0xff;
             if(kind==2){if(item.bytes==4)write32(arg(2)+item.offset,inputKeys[index]);else *static_cast<uint8_t*>(ptr(arg(2)+item.offset,1))=inputKeys[index];}

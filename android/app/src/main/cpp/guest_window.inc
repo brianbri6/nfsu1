@@ -105,6 +105,8 @@ std::pair<int32_t,int32_t> pointerInWindow(){
     auto window=windows.find(activeWindow);
     if(window==windows.end())return {0,0};
     int32_t width=std::max(window->second.width,1),height=std::max(window->second.height,1);
+    // Speed.exe's window: client pixels are its back buffer (0x71A96C), as GetClientRect reports.
+    if(activeWindow==read32(0x736380)){int32_t w=int32_t(read32(0x71a96c)),h=int32_t(read32(0x71a970));if(w>0&&h>0&&w<=8192&&h<=8192){width=w;height=h;}}
     return {std::min(int32_t(guestPointerX.load()*float(width)),width-1),std::min(int32_t(guestPointerY.load()*float(height)),height-1)};
 }
 void enqueueGuestPointer(int phase){  // 0 down, 1 move, 2 up
