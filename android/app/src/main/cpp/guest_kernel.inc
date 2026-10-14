@@ -44,7 +44,20 @@ void initializeCritical() {initCritical(arg(0),0);ret(0,1);}
 void initializeCriticalSpin() {initCritical(arg(0),arg(1));ret(1,2);}
 void enterCritical() {
     uint32_t address=arg(0); auto cs=criticalSections.find(address);
-    if(cs==criticalSections.end()) throw GuestStop("EnterCriticalSection without initialization");
+    if(cs==criticalSections.end()){
+        // A CRITICAL_SECTION copied by value after InitializeCriticalSection keeps
+        // its state in the struct, and Windows accepts it: LockCount -1 (unlocked),
+        // no recursion, no owner. Adopt exactly that; anything else is a real bug.
+        if(read32(address+4)==UINT32_MAX&&read32(address+8)==0&&read32(address+12)==0){
+            static unsigned adopted=0;
+            if(++adopted<=8)NFS_RUNTIME_LOG(ANDROID_LOG_WARN,"NFSU1","Adopting copied critical section %08x from %08x",address,g_cur_func);
+            criticalSections[address]=std::make_shared<std::recursive_mutex>();
+            cs=criticalSections.find(address);
+        }else{
+            std::ostringstream dump;for(unsigned i=0;i<24;i+=4)dump<<' '<<hex(read32(address+i));
+            throw GuestStop("EnterCriticalSection without initialization: "+hex(address)+" from "+hex(g_cur_func)+" words"+dump.str());
+        }
+    }
     auto mutex=cs->second;
     // Contended: hand the machine over (the fair lock gives it to the waiting
     // owner) instead of sleeping 1 ms per attempt; sleep only if it persists.
@@ -352,6 +365,30 @@ void messageBox(){
     static constexpr uint32_t answers[]={1,1,5,6,6,2,11};
     ret(type<7?answers[type]:1,4);
 }
+// The pointer follows touch; a game that recentres the cursor gets success and no jump.
+void setCursorPos(){ret(1,2);}
+// CharUpperA: a pointer whose high word is zero carries one character in its low byte.
+void charUpperA(){
+    uint32_t value=arg(0);
+    if(!(value>>16)){ret(uint32_t(std::toupper(int(value&0xff))),1);return;}
+    for(uint32_t p=value;;++p){auto* c=static_cast<uint8_t*>(ptr(p,1));if(!*c)break;*c=uint8_t(std::toupper(*c));}
+    ret(value,1);
+}
+// lstrcmpiA: case-insensitive, ASCII ordering (the game compares file and profile names).
+void lstrcmpiA(){
+    std::string a=lower(guestString(arg(0))),b=lower(guestString(arg(1)));
+    int result=a.compare(b);ret(uint32_t(result<0?-1:result>0?1:0),2);
+}
+// CompareStringW -> CSTR_LESS_THAN 1, CSTR_EQUAL 2, CSTR_GREATER_THAN 3; NORM_IGNORECASE folds ASCII.
+void compareStringW(){
+    uint32_t flags=arg(1);
+    auto read=[&](uint32_t text,int32_t count){std::u16string out;
+        for(uint32_t i=0;count<0||i<uint32_t(count);++i){uint16_t c;std::memcpy(&c,ptr(text+i*2,2),2);if(count<0&&!c)break;
+            if((flags&1)&&c>='A'&&c<='Z')c=uint16_t(c+32);out.push_back(char16_t(c));}
+        return out;};
+    auto a=read(arg(2),int32_t(arg(3))),b=read(arg(4),int32_t(arg(5)));
+    int result=a.compare(b);ret(result<0?1u:result>0?3u:2u,6);
+}
 const std::map<std::string,recomp_func_t> windowFunctions={
     {"MessageBoxA",messageBox},
     {"PeekMessageA",peekMessage},{"GetMessageA",getMessage},{"TranslateMessage",translateMessage},{"DispatchMessageA",dispatchMessage},
@@ -367,7 +404,8 @@ const std::map<std::string,recomp_func_t> windowFunctions={
     {"LoadIconA",loadIcon},{"LoadCursorA",loadCursor},
     {"GetDesktopWindow",desktopHandle},{"GetWindowRect",windowRect},
     {"SetCapture",setCapture},{"ReleaseCapture",releaseCapture},
-    {"GetClientRect",clientRect},{"GetCursorPos",cursorPosition},{"GetSystemMetrics",systemMetrics}
+    {"GetClientRect",clientRect},{"GetCursorPos",cursorPosition},{"GetSystemMetrics",systemMetrics},
+    {"SetCursorPos",setCursorPos},{"CharUpperA",charUpperA}
 };
 // Guest threads run one at a time under the machine lock, so plain accesses are atomic to them.
 void interlockedExchange(){uint32_t target=arg(0),old=read32(target);write32(target,arg(1));ret(old,2);}
@@ -401,7 +439,7 @@ const std::map<std::string,recomp_func_t> kernelFunctions={
     {"GetCurrentThreadId",threadId},{"GetVersion",version},{"IsDebuggerPresent",isDebugger},{"IsProcessorFeaturePresent",processorFeature},
     {"SetUnhandledExceptionFilter",setExceptionFilter},{"EncodePointer",encodePointer},{"DecodePointer",encodePointer},
     {"GetACP",getACP},{"GetOEMCP",getOEMCP},{"GetCPInfo",cpInfo},{"GetThreadLocale",threadLocale},
-    {"WideCharToMultiByte",wideToMulti},{"MultiByteToWideChar",multiToWide},{"GetStringTypeW",stringTypeW},{"LCMapStringW",mapStringW},
+    {"WideCharToMultiByte",wideToMulti},{"CompareStringW",compareStringW},{"lstrcmpiA",lstrcmpiA},{"MultiByteToWideChar",multiToWide},{"GetStringTypeW",stringTypeW},{"LCMapStringW",mapStringW},
     {"GetTickCount",tickCount},{"QueryPerformanceCounter",performanceCounter},
     {"QueryPerformanceFrequency",performanceFrequency},{"GetSystemTimeAsFileTime",systemFileTime},
     {"FileTimeToLocalFileTime",fileTimeToLocalFileTime},{"FileTimeToSystemTime",fileTimeToSystemTime},

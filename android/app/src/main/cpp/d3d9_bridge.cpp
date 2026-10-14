@@ -171,6 +171,20 @@ void noteVertexDeclaration(const D3DVERTEXELEMENT9* elements){
         NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","D3D9 game vertex type %s (usage %u)",name,unsigned(elements[i].Usage));
     }
 }
+// Speed.exe marks which of its 4:3 modes (640x480 ... 1280x1024) the adapter lists
+// and then scans upward, without a bound, for the first one present; on Android
+// DXVK lists only the panel's own size. The swapchain is scaled to the surface
+// anyway, so the classic modes are offered first, then the native ones.
+std::vector<D3DDISPLAYMODE> adapterModes(IDirect3D9* d3d,UINT adapter,D3DFORMAT format){
+    std::vector<D3DDISPLAYMODE> modes;
+    if(format==D3DFMT_X8R8G8B8||format==D3DFMT_R5G6B5)
+        for(auto size:{std::pair<UINT,UINT>{640,480},{800,600},{1024,768},{1280,960},{1280,1024}})modes.push_back({size.first,size.second,60,format});
+    UINT count=d3d->GetAdapterModeCount(adapter,format);
+    for(UINT i=0;i<count;++i){D3DDISPLAYMODE mode{};
+        if(FAILED(d3d->EnumAdapterModes(adapter,format,i,&mode)))continue;
+        if(std::none_of(modes.begin(),modes.end(),[&](const D3DDISPLAYMODE& m){return m.Width==mode.Width&&m.Height==mode.Height&&m.RefreshRate==mode.RefreshRate;}))modes.push_back(mode);}
+    return modes;
+}
 // Set when DXVK could not rebuild the swap chain in Reset. DXVK's TestCooperativeLevel
 // always reports D3D_OK, so the game would keep drawing on the half-reset device and
 // crash (null dereference, Mali reports); until a Reset succeeds the device reads as
@@ -230,8 +244,10 @@ uint32_t dispatchGuestD3D9(uint32_t token,const uint32_t* args,uint32_t* argumen
         case 3:*argumentCount=2;return D3DERR_NOTAVAILABLE;
         case 4:*argumentCount=1;return d3d->GetAdapterCount();
         case 5:*argumentCount=4;return d3d->GetAdapterIdentifier(args[1],args[2],static_cast<D3DADAPTER_IDENTIFIER9*>(pointer(args[3])));
-        case 6:*argumentCount=3;return d3d->GetAdapterModeCount(args[1],static_cast<D3DFORMAT>(args[2]));
-        case 7:*argumentCount=5;return d3d->EnumAdapterModes(args[1],static_cast<D3DFORMAT>(args[2]),args[3],static_cast<D3DDISPLAYMODE*>(pointer(args[4])));
+        case 6:*argumentCount=3;return uint32_t(adapterModes(d3d,args[1],static_cast<D3DFORMAT>(args[2])).size());
+        case 7:{*argumentCount=5;auto modes=adapterModes(d3d,args[1],static_cast<D3DFORMAT>(args[2]));
+            if(args[3]>=modes.size())return D3DERR_INVALIDCALL;
+            std::memcpy(pointer(args[4]),&modes[args[3]],sizeof(D3DDISPLAYMODE));return D3D_OK;}
         case 8:*argumentCount=3;return d3d->GetAdapterDisplayMode(args[1],static_cast<D3DDISPLAYMODE*>(pointer(args[2])));
         case 9:*argumentCount=6;return d3d->CheckDeviceType(args[1],static_cast<D3DDEVTYPE>(args[2]),static_cast<D3DFORMAT>(args[3]),static_cast<D3DFORMAT>(args[4]),args[5]);
         case 10:{*argumentCount=7;auto format=static_cast<D3DFORMAT>(args[6]);auto type=static_cast<D3DRESOURCETYPE>(args[5]);

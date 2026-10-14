@@ -515,8 +515,12 @@ void testGuestTimers(){
     }catch(...){timerTestActive=false;for(auto& timer:timerHandles)timer.second->cancelled=true;timerHandles.clear();throw;}
 }
 void testGuestFileTime(){
-    auto imported=[&](const std::string& name){for(uint32_t i=0;i<imports.size();++i)if(imports[i].name==name)return importBase+i*16;throw GuestStop("File-time import unavailable");};
+    auto imported=[&](const std::string& name){for(uint32_t i=0;i<imports.size();++i)if(imports[i].name==name)return importBase+i*16;return 0u;};
     uint32_t local=imported("kernel32.dll!FileTimeToLocalFileTime"),system=imported("kernel32.dll!FileTimeToSystemTime");
+    if(!local||!system){  // the self-check drives the game's own imports; Speed.exe has neither
+        NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Guest FILETIME self-check skipped: the game imports no FILETIME conversion");
+        return;
+    }
     uint32_t data=allocate(48);uint64_t epoch=116444736000000000ull+1234ull*10000ull;
     std::memset(ptr(data,48),0xa5,48);std::memcpy(ptr(data,8),&epoch,8);
     bool okay=callGuest(local,{data,data+8})==1&&read32(data+8)==uint32_t(epoch)&&read32(data+12)==uint32_t(epoch>>32)
