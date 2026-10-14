@@ -12,9 +12,11 @@ void nfs_widescreen_init(const char* game_root);
 void nfs_widescreen_set_display_aspect(float aspect);
 /* The game's render size; call before its HUD draws and on every change. */
 void nfs_widescreen_set_resolution(unsigned width, unsigned height);
-/* Draw the front-end mouse arrow where the cursor hit-tests (hosts that have
- * no Win32 cursor of their own: Android). */
+/* Touch hosts (Android): the mouse cursor is handed out in front-end units,
+ * so its clamp spans the wide HUD space (see nfs_widescreen_hud_pos_x). */
 void nfs_frontend_cursor_units(int on);
+/* fHudPosX: the FE/HUD centre; the visible FE space is 320 -/+ this value. */
+float nfs_widescreen_hud_pos_x(void);
 /* HUD offset entries loaded from the .dat (0: elements keep 4:3 anchors). */
 int nfs_widescreen_hud_entries(void);
 /* Vertical offset (480-line HUD units, negative = up) added to the minimap. */

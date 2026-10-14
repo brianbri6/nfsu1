@@ -395,7 +395,11 @@ void inputDispatch(){
                 // The cursor is in front-end units: menus hit-test it as
                 // (x-320, y-240) and draw the arrow from it (640x480 at any
                 // render size, stretched over the whole screen).
-                std::pair<int32_t,int32_t> point={std::min(int32_t(guestPointerX.load()*640.f),639),std::min(int32_t(guestPointerY.load()*480.f),479)};
+                // With FixHUD the screen spans 0..2*fHudPosX cursor units across
+                // (the mod's cursor range; measured on device: the arrow sits under
+                // the finger at any render size).
+                float half=nfs_widescreen_hud_pos_x();
+                std::pair<int32_t,int32_t> point={int32_t(lroundf(guestPointerX.load()*2.f*half)),std::min(int32_t(guestPointerY.load()*480.f),479)};
                 inputMouseX=point.first-int32_t(read32(gameMouse+4));inputMouseY=point.second-int32_t(read32(gameMouse+8));}
             else if(!touchButtons.empty()&&steadyMs()-touchSettleMs>=touchHoldMs){inputMouseButtons[0]=touchButtons.front();touchButtons.pop_front();touchSettleMs=steadyMs();}
         }

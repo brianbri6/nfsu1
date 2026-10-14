@@ -8,5 +8,21 @@
 0x0040DE49  FixFOV: fmul [0.5] -> per-view constant
 0x0040DEC1  FixFOV: fdivr [1.0] -> per-view horizontal scale
 0x0040DEF2  FixFOV: fdivr [1.0] -> per-view constant
-0x00409EB8  front-end arrow: cursor pixels -> 640x480 FE units (eax=Y, ecx=X)
-0x00401832  front-end arrow: cursor pixels -> 640x480 FE units (edx=Y, eax=X)
+0x00409EB8  front-end arrow draw (inert: the touch cursor is in FE units)
+0x00401832  front-end arrow draw (inert)
+0x004131B5  mouse clamp rect after GetClientRect -> wide FE space (touch hosts)
+0x004F20A7  FixHUD anchor X after mov [esp+80h], 320.0
+0x004F2333  FixHUD anchor X after mov [esp+90h], 320.0
+0x004F28B3  FixHUD anchor X after mov [esp+0A0h], 320.0
+0x004F1E31  FixHUD anchor X after mov [esp+60h], 320.0
+0x004F26E9  FixHUD anchor X after mov [esp+50h], 320.0
+0x0058E5C3  minimap centre: fadd [0x6CC910] keeps 320
+0x00409F75  rear-view mirror quad X (440/200/200/440)
+0x004F18D1  HudHook: element X/Y in eax/ecx (.dat offsets)
+0x00590DDF  MinimapHook1 ([ecx+68h]/[ecx+6Ch])
+0x0058FB1C  MinimapHook2 ([eax+68h]/[eax+6Ch])
+0x0058E5B2  MinimapHook3 ([eax+1Ch]/[eax+20h])
+0x004F6DAB  LapsHook ([ebx+1Ch]/[ebx+20h])
+0x004F1FD7  FMV quad extents (FMVWidescreenMode 1)
+0x004F225C  FMV quad extents
+0x004F25D1  FMV quad extents

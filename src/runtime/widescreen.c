@@ -8,9 +8,15 @@
  * recomp_hook) right after the instruction whose result it changes. The hook
  * VAs were located in the pinned Speed.exe 1.4 by the mod's byte patterns.
  *
+ * Frontend.ixx (FixHUD, FMVWidescreenMode 1) is ported the same way: the HUD
+ * projection scale and centre are data (0x6CC914, 0x6CC910); the 320.0 anchors
+ * stored as immediates, the minimap, laps and HUD-element positions (offsets
+ * from the mod's .dat, embedded in widescreen_hud.inc) and the FMV quad are
+ * hooks. The touch host hands out the mouse cursor in [0, 2*fHudPosX] (the
+ * mod's range) and the cursor clamp (0x4131A0) is widened to it.
+ *
  * Off until a host gives the display aspect (Android: the surface; the Windows
- * bring-up host keeps the original 4:3 game). Front-end and HUD placement
- * (the mod's Frontend.ixx) are not ported yet: 2D stays stretched.
+ * bring-up host keeps the original 4:3 game).
  * Shared by the Windows host and the Android runtime.
  */
 #include <math.h>
@@ -32,18 +38,46 @@ static float s_display_aspect;          /* 0: off, the game keeps 4:3 */
 static float s_aspect = 4.0f / 3.0f;    /* the render target's, once widened */
 /* FOV constants of the three reads after 0x40DDD2, chosen per view id. */
 static double s_fov_scale[3] = {1.0, 0.5, 1.0};
-static int s_fe_cursor;                 /* draw the front-end arrow in FE units */
-
-/* The front end's arrow (sub_004F3030) takes the cursor as 640x480 front-end
- * units while the cursor and its hit tests are in render pixels; they only
- * agree at 640x480. Hosts without the Win32 cursor (Android) draw the arrow. */
-static uint32_t fe_units(uint32_t pixels, uint32_t size_va, float units) {
-    uint32_t size = MEM32(size_va);
-    if (!size || size > 8192) return pixels;
-    return (uint32_t)(int32_t)lroundf((float)(int32_t)pixels * units / (float)size);
-}
+static int s_fe_cursor;                 /* touch host: cursor in FE units */
 void nfs_frontend_cursor_units(int on) { s_fe_cursor = on; }
+/* FixHUD: fHudPosX (centre of the 4:3 HUD in wide HUD units) and the mod's
+ * fWidescreenHudOffset (= fHudPosX - 320 with HudAspectRatioConstraint Auto). */
+static float s_hud_pos_x = 320.0f;
+typedef struct { uint32_t x, y; float off_x, off_y; } hud_entry;
+static const hud_entry k_hud[] = {
+#include "widescreen_hud.inc"
+};
 
+
+
+
+static float rdf(uint32_t va) { uint32_t v = MEM32(va); float f; memcpy(&f, &v, 4); return f; }
+static void wrf(uint32_t va, float f) { uint32_t v; memcpy(&v, &f, 4); MEM32(va) = v; }
+
+/* The mod's WidescreenHud(): move a known HUD element (matched by the bits of
+ * its anchor) by its .dat offset; not in the front end (game state 3). */
+static void widescreen_hud(uint32_t *bx, uint32_t *by, int minimap) {
+    const float base_offset = (480.0f * (16.0f / 9.0f) - 640.0f) / 2.0f;
+    const float hud_offset = s_hud_pos_x - 320.0f;
+    if (MEM32(0x0077A920u) == 3) return;
+    for (unsigned i = 0; i < sizeof k_hud / sizeof k_hud[0]; i++) {
+        float x, y;
+        if (k_hud[i].x != *bx || k_hud[i].y != *by) continue;
+        memcpy(&x, bx, 4); memcpy(&y, by, 4);
+        if (k_hud[i].off_x >= 0.0f) x += hud_offset + (k_hud[i].off_x - base_offset);
+        else x -= hud_offset - (k_hud[i].off_x + base_offset);
+        y += k_hud[i].off_y;
+        if (minimap) x += s_hud_pos_x - 320.0f;   /* - fMinimapPosX + fHudPosX */
+        memcpy(bx, &x, 4); memcpy(by, &y, 4);
+        return;
+    }
+}
+static void hud_mem_pair(uint32_t va_x, uint32_t va_y, int minimap) {
+    uint32_t x = MEM32(va_x), y = MEM32(va_y);
+    widescreen_hud(&x, &y, minimap);
+    MEM32(va_x) = x; MEM32(va_y) = y;
+}
+float nfs_widescreen_hud_pos_x(void) { return s_hud_pos_x; }
 
 void nfs_widescreen_init(const char *game_root) { (void)game_root; }
 void nfs_widescreen_set_display_aspect(float aspect) {
@@ -59,10 +93,17 @@ void nfs_widescreen_apply_frame_rate(void) {}
 
 void recomp_hook(uint32_t va) {
     /* Arrow draw calls: X/Y loaded, about to be pushed for sub_004F3030. */
-    if (va == 0x00409EB8u || va == 0x00401832u) {
+    /* Arrow draw calls: superseded (the touch cursor is already in FE units);
+     * the lifted code still calls here, so they stay accepted and inert. */
+    if (va == 0x00409EB8u || va == 0x00401832u) return;
+    /* Mouse clamp (0x4131A0) after GetClientRect: the FE-unit cursor of a
+     * touch host spans [0, 2 * fHudPosX] (the mod's ClientRectHook1/2). */
+    if (va == 0x004131B5u) {
         if (!s_fe_cursor) return;
-        if (va == 0x00409EB8u) { g_ecx = fe_units(g_ecx, 0x0071A96Cu, 640.0f); g_eax = fe_units(g_eax, 0x0071A970u, 480.0f); }
-        else { g_eax = fe_units(g_eax, 0x0071A96Cu, 640.0f); g_edx = fe_units(g_edx, 0x0071A970u, 480.0f); }
+        MEM32(g_esp + 0x0) = 0;
+        MEM32(g_esp + 0x4) = 0;
+        MEM32(g_esp + 0x8) = (uint32_t)(int32_t)lroundf(2.0f * s_hud_pos_x);
+        MEM32(g_esp + 0xC) = 480;
         return;
     }
     if (s_display_aspect <= 0.0f) return;
@@ -78,6 +119,43 @@ void recomp_hook(uint32_t va) {
             MEM32(0x00701034u) = width;
             s_aspect = (float)width / (float)height;
         }
+        /* FixHUD: fHudScaleX = 2/W * (H/480) (fmul at 0x40BF07), fHudPosX. */
+        if (height) {
+            float w = (float)MEM32(0x0071A96Cu), h = (float)height;
+            float scale = (1.0f / w * (h / 480.0f)) * 2.0f;
+            s_hud_pos_x = 640.0f / (640.0f * scale);
+            wrf(0x006CC914u, scale);
+            wrf(0x006CC910u, s_hud_pos_x);   /* fcomp at 0x41E58F; the minimap is put back below */
+        }
+        break;
+    }
+    /* HUD anchors: `mov [esp+N], 320.0` -> fHudPosX. */
+    case 0x004F20A7u: wrf(g_esp + 0x80, s_hud_pos_x); break;
+    case 0x004F2333u: wrf(g_esp + 0x90, s_hud_pos_x); break;
+    case 0x004F28B3u: wrf(g_esp + 0xA0, s_hud_pos_x); break;
+    case 0x004F1E31u: wrf(g_esp + 0x60, s_hud_pos_x); break;
+    case 0x004F26E9u: wrf(g_esp + 0x50, s_hud_pos_x); break;
+    /* Minimap centre `fadd [0x6CC910]` keeps the original 320 (the mod's fMinimapPosX). */
+    case 0x0058E5C3u: g_st[0] -= (double)(s_hud_pos_x - 320.0f); break;
+    /* Rear-view mirror quad X (440/200/200/440), shifted with the HUD centre. */
+    case 0x00409F75u: {
+        const uint32_t xs[4] = { 0x6C, 0x7C, 0x8C, 0x9C };
+        for (int i = 0; i < 4; i++) wrf(g_esp + xs[i], rdf(g_esp + xs[i]) + (s_hud_pos_x - 320.0f));
+        break;
+    }
+    /* HudHook: eax/ecx = element X/Y just loaded from [edi+1C]/[edi+20]. */
+    case 0x004F18D1u: widescreen_hud(&g_eax, &g_ecx, 0); break;
+    /* Minimap hooks: positions read right after (fld [..+68]/[..+1C]). */
+    case 0x00590DDFu: hud_mem_pair(g_ecx + 0x68, g_ecx + 0x6C, 1); break;
+    case 0x0058FB1Cu: hud_mem_pair(g_eax + 0x68, g_eax + 0x6C, 1); break;
+    case 0x0058E5B2u: hud_mem_pair(g_eax + 0x1C, g_eax + 0x20, 1); break;
+    /* LapsHook: before `fadd [ebx+1C]`. */
+    case 0x004F6DABu: hud_mem_pair(g_ebx + 0x1C, g_ebx + 0x20, 0); break;
+    /* FMVWidescreenMode 1 (cropped 16:9): the four pushed quad extents
+     * (left, top, right, bottom on the stack before the last push). */
+    case 0x004F1FD7u: case 0x004F225Cu: case 0x004F25D1u: {
+        const float v = 0.5f / ((4.0f / 3.0f) / (16.0f / 9.0f));
+        wrf(g_esp + 0x0, -v); wrf(g_esp + 0x4, -v); wrf(g_esp + 0x8, v); wrf(g_esp + 0xC, v);
         break;
     }
     /* FixFOV: ST0 was viewport height/width; the mod loads a per-view scale

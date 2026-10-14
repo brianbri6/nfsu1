@@ -647,6 +647,7 @@ std::string connectGuestRuntime(const char* executable) {
         configureD3D9Bridge(memory->base(),allocate,freeD3DGuest);
 #endif
         loadImage(executable);
+        nfs_frontend_cursor_units(1);  // touch hands out the cursor in front-end units
         if(guestWidescreen){
             nfs_widescreen_init(hostGameRoot.c_str());
             // Landscape surface: the long side over the short one.
