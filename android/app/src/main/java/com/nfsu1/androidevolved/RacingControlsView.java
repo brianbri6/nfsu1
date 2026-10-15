@@ -47,6 +47,7 @@ final class RacingControlsView extends View {
     private boolean lastGameMode;
     private boolean editing;
     private boolean hiddenByGamepad;
+    private boolean gamepadConnected;
     private Control selected;
     private int dragPointer = -1;
     private float dragX, dragY;
@@ -99,8 +100,10 @@ final class RacingControlsView extends View {
     boolean isDriving() {return racing&&!editing&&!hiddenByGamepad;}
     /** A physical gamepad is connected: get out of the way until the screen is touched. */
     void setGamepadConnected(boolean connected) {
-        if(hiddenByGamepad==connected||editing)return;
-        hiddenByGamepad=connected;releaseAll();
+        if(gamepadConnected==connected)return;
+        gamepadConnected=connected;
+        hiddenByGamepad=connected&&!editing;
+        releaseAll();
     }
     private void layoutControls() {
         releaseAll(); controls.clear();selected=null;dragPointer=-1;

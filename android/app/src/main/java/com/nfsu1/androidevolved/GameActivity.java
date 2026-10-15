@@ -101,8 +101,12 @@ public final class GameActivity extends NativeActivity {
             android.view.InputDevice device=android.view.InputDevice.getDevice(id);
             if(device==null||device.isVirtual())continue;
             int sources=device.getSources();
-            if((sources&android.view.InputDevice.SOURCE_GAMEPAD)==android.view.InputDevice.SOURCE_GAMEPAD||
-                    (sources&android.view.InputDevice.SOURCE_JOYSTICK)==android.view.InputDevice.SOURCE_JOYSTICK)connected=true;
+            boolean buttons=(sources&android.view.InputDevice.SOURCE_GAMEPAD)==android.view.InputDevice.SOURCE_GAMEPAD;
+            // Some fingerprint sensors advertise JOYSTICK with only a Z axis.
+            boolean stick=(sources&android.view.InputDevice.SOURCE_JOYSTICK)==android.view.InputDevice.SOURCE_JOYSTICK&&
+                    device.getMotionRange(android.view.MotionEvent.AXIS_X)!=null&&
+                    device.getMotionRange(android.view.MotionEvent.AXIS_Y)!=null;
+            if(buttons||stick)connected=true;
         }
         if(touchControls!=null)touchControls.setGamepadConnected(connected);
         nativeGamepadConnected(connected);
