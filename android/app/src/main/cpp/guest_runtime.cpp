@@ -206,11 +206,12 @@ void startStallWatch(){
         }
     }).detach();});
 }
-void yieldGuestMachine(unsigned milliseconds=0) {
+void yieldGuestMachine(unsigned milliseconds=0,std::chrono::steady_clock::time_point deadline={}) {
     if(!machineLease||!machineLease->owns_lock())throw GuestStop("Guest scheduler ownership missing");
     {auto& trace=currentTrace();trace.func=g_cur_func;trace.esp=g_esp;}
     State saved;saved.save();machineLease->unlock();
-    if(milliseconds)std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));else std::this_thread::yield();
+    if(deadline!=std::chrono::steady_clock::time_point{})std::this_thread::sleep_until(deadline);
+    else if(milliseconds)std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));else std::this_thread::yield();
     machineLease->lock();saved.load();
 }
 void checkGuestProgress() {
@@ -299,6 +300,7 @@ void getProcAddress();
 uint32_t d3dToken{};
 void direct3DCreate(){ret(createGuestD3D9(arg(0)),1);}
 void freeD3DGuest(uint32_t address){heaps->free(GuestHeaps::process,address);}
+void serviceGuestSound();
 void d3dDispatch(){uint32_t args[32];std::memcpy(args,ptr(g_esp+4,sizeof args),sizeof args);uint32_t count=0;uint32_t token=d3dToken;
     static uint64_t bridgeCalls=0;static std::chrono::nanoseconds bridgeTime{},presentTime{};
     // Time one call in 64 (and every Present) so the statistic does not cost
@@ -316,9 +318,9 @@ void d3dDispatch(){uint32_t args[32];std::memcpy(args,ptr(g_esp+4,sizeof args),s
         if(cap!=appliedLimit||now>nextFrame+std::chrono::milliseconds(200)){
             appliedLimit=cap;nextFrame=now;
         }
-        if(cap){nextFrame+=std::chrono::nanoseconds(1000000000ull/cap);if(nextFrame>now)std::this_thread::sleep_until(nextFrame);}
+        if(cap){nextFrame+=std::chrono::nanoseconds(1000000000ull/cap);if(nextFrame>now)yieldGuestMachine(0,nextFrame);}
         static unsigned frames=0;static auto since=std::chrono::steady_clock::now();
-        if(++frames==120){auto now=std::chrono::steady_clock::now();double seconds=std::chrono::duration<double>(now-since).count();
+        if(++frames==120){serviceGuestSound();auto now=std::chrono::steady_clock::now();double seconds=std::chrono::duration<double>(now-since).count();
             NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Guest D3D9 presentation %.1f FPS over %.2f seconds; bridge ~%.2f ms/frame (present %.2f), %.0f calls/frame",
                 frames/seconds,seconds,double(bridgeTime.count())/1e6/frames,double(presentTime.count())/1e6/frames,double(bridgeCalls)/frames);
             frames=0;since=now;bridgeTime=presentTime=std::chrono::nanoseconds{};bridgeCalls=0;}
@@ -347,7 +349,7 @@ void testGuestScheduling(){
         catch(const std::exception& error){failure=error.what();}
         forgetThreadTrace();done=true;machineLease=nullptr;
     });
-    try{while(!done){checkGuestProgress();yieldGuestMachine();
+    try{while(!done){checkGuestProgress();yieldGuestMachine(0,std::chrono::steady_clock::now()+std::chrono::milliseconds(1));
         if(g_eax!=0x11223344||g_fs_base!=0x21000000||g_st[0]!=123.5||g_xmm[7].u64[0]!=0x123456789abcdef0ull||lastError!=111||tlsValues[1087]!=0x55)
             failure="Main guest context was not preserved during handover";
     }}catch(const std::exception& error){failure=error.what();}

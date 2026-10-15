@@ -13,7 +13,16 @@ std::map<uint32_t,uint32_t> soundMethodCalls;
 uint32_t soundToken{};
 #ifdef __ANDROID__
 AAudioStream* soundStream=nullptr;
-aaudio_data_callback_result_t soundCallback(AAudioStream*,void*,void* data,int32_t frames){soundMixer.render(static_cast<float*>(data),unsigned(frames));return AAUDIO_CALLBACK_RESULT_CONTINUE;}
+int32_t soundLastXruns=0;
+std::atomic<uint32_t> soundCallbackPeakUs{0};
+aaudio_data_callback_result_t soundCallback(AAudioStream*,void*,void* data,int32_t frames){
+    auto start=std::chrono::steady_clock::now();
+    soundMixer.render(static_cast<float*>(data),unsigned(frames));
+    uint32_t us=uint32_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-start).count());
+    auto peak=soundCallbackPeakUs.load(std::memory_order_relaxed);
+    while(us>peak&&!soundCallbackPeakUs.compare_exchange_weak(peak,us,std::memory_order_relaxed)){}
+    return AAUDIO_CALLBACK_RESULT_CONTINUE;
+}
 bool startSoundStream(){
     if(soundStream)return true;AAudioStreamBuilder* builder=nullptr;
     if(AAudio_createStreamBuilder(&builder)!=AAUDIO_OK)return false;
@@ -21,15 +30,33 @@ bool startSoundStream(){
     AAudioStreamBuilder_setFormat(builder,AAUDIO_FORMAT_PCM_FLOAT);
     AAudioStreamBuilder_setChannelCount(builder,2);
     AAudioStreamBuilder_setSharingMode(builder,AAUDIO_SHARING_MODE_SHARED);
+    AAudioStreamBuilder_setPerformanceMode(builder,AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
     AAudioStreamBuilder_setDataCallback(builder,soundCallback,nullptr);
     auto status=AAudioStreamBuilder_openStream(builder,&soundStream);AAudioStreamBuilder_delete(builder);
     if(status!=AAUDIO_OK){soundStream=nullptr;return false;}
     soundMixer.rate=unsigned(AAudioStream_getSampleRate(soundStream));
+    int32_t burst=AAudioStream_getFramesPerBurst(soundStream);
+    if(burst>0)AAudioStream_setBufferSizeInFrames(soundStream,burst*2);
+    soundLastXruns=0;soundCallbackPeakUs=0;
     status=AAudioStream_requestStart(soundStream);
     if(status!=AAUDIO_OK){AAudioStream_close(soundStream);soundStream=nullptr;return false;}
     NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","AAudio stereo float stream started: %u Hz",soundMixer.rate);return true;
 }
+// Called on the guest thread after Present, never from the real-time callback.
+// Grow only after an actual underrun, one burst at a time, bounded by capacity.
+void serviceGuestSound(){
+    if(!soundStream)return;
+    int32_t xruns=AAudioStream_getXRunCount(soundStream),burst=AAudioStream_getFramesPerBurst(soundStream);
+    int32_t size=AAudioStream_getBufferSizeInFrames(soundStream),capacity=AAudioStream_getBufferCapacityInFrames(soundStream);
+    if(xruns>soundLastXruns&&burst>0&&size<capacity&&size<burst*8)
+        AAudioStream_setBufferSizeInFrames(soundStream,std::min({size+burst,capacity,burst*8}));
+    if(xruns>=0)soundLastXruns=xruns;
+    NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSMW","Audio health: xruns=%d buffer=%d/%d burst=%d rate=%u callbackPeak=%u us mode=%d",
+        xruns,AAudioStream_getBufferSizeInFrames(soundStream),capacity,burst,soundMixer.rate,
+        soundCallbackPeakUs.exchange(0,std::memory_order_relaxed),int(AAudioStream_getPerformanceMode(soundStream)));
+}
 #else
+void serviceGuestSound(){}
 bool startSoundStream(){return true;} // Host tests inspect the mixer; no physical audio output.
 #endif
 void shutdownGuestSound(){
