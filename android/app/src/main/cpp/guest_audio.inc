@@ -7,6 +7,8 @@ struct SoundObject {
     std::shared_ptr<PcmVoice> voice;
     bool locked=false;
     uint32_t lockOffset=0,lockBytes=0;
+    std::chrono::steady_clock::time_point lastPublish{};
+    std::chrono::microseconds maxPublishGap{};
 };
 std::map<uint32_t,SoundObject> soundObjects;
 std::map<uint32_t,uint32_t> soundMethodCalls;
@@ -51,6 +53,19 @@ void serviceGuestSound(){
     if(xruns>soundLastXruns&&burst>0&&size<capacity&&size<burst*8)
         AAudioStream_setBufferSizeInFrames(soundStream,std::min({size+burst,capacity,burst*8}));
     if(xruns>=0)soundLastXruns=xruns;
+    uint64_t clipped;float peak;unsigned active=0;double publishGapMs=0,ringMs=0;
+    {std::lock_guard<std::mutex> lock(soundMixer.mutex);
+        clipped=soundMixer.clippedSamples;peak=soundMixer.peakAmplitude;
+        soundMixer.clippedSamples=0;soundMixer.peakAmplitude=0;
+        for(const auto& voice:soundMixer.voices)if(voice&&voice->playing)++active;
+        for(auto& item:soundObjects){auto& object=item.second;auto& voice=object.voice;
+            if(voice&&voice->playing&&voice->loop){
+                publishGapMs=std::max(publishGapMs,double(object.maxPublishGap.count())/1000);
+                ringMs=std::max(ringMs,1000.0*voice->samples.size()/voice->block()/voice->frequency);
+            }
+            object.maxPublishGap={};}}
+    NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSMW","Audio producer: maxPublishGap=%.2f ms ring=%.2f ms",publishGapMs,ringMs);
+    NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSMW","Audio mix: active=%u peak=%.4f clipped=%llu",active,double(peak),static_cast<unsigned long long>(clipped));
     NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSMW","Audio health: xruns=%d buffer=%d/%d burst=%d rate=%u callbackPeak=%u us mode=%d",
         xruns,AAudioStream_getBufferSizeInFrames(soundStream),capacity,burst,soundMixer.rate,
         soundCallbackPeakUs.exchange(0,std::memory_order_relaxed),int(AAudioStream_getPerformanceMode(soundStream)));
@@ -114,7 +129,10 @@ void soundDispatch(){
             if(!(flags&1)){created.guestSamples=allocate(bytes);std::memcpy(ptr(created.guestSamples,bytes),voice->samples.data(),bytes);}
             write32(output,buffer);ret(0,4);return;}
         case 4:{uint32_t out=arg(1);if(!out||read32(out)!=96){ret(0x80070057,2);return;}std::memset(ptr(out+4,92),0,92);
-            write32(out+4,0x147);write32(out+8,100);write32(out+12,200000);write32(out+16,1);ret(0,2);return;}
+            // Match the PCM formats and continuous resampling we implement. The old
+            // 0x147 omitted PRIMARY16BIT, SECONDARY16BIT and SECONDARYSTEREO.
+            // A Windows DirectSound probe reports 0xF1F for the same formats.
+            write32(out+4,0xf1f);write32(out+8,100);write32(out+12,200000);write32(out+16,1);ret(0,2);return;}
         case 6:if(!windows.count(arg(1))||arg(2)<1||arg(2)>3){ret(0x80070057,3);return;}ret(0,3);return;
         case 8:if(!arg(1)){ret(0x80004003,2);return;}write32(arg(1),4);ret(0,2);return; // Stereo speaker configuration.
         default:throw GuestStop("DirectSound interface method pending: "+std::to_string(method));
@@ -151,6 +169,10 @@ void soundDispatch(){
         {std::lock_guard<std::mutex> lock(soundMixer.mutex);
             std::memcpy(voice->samples.data()+object.lockOffset,ptr(object.guestSamples+object.lockOffset,first),first);
             if(second)std::memcpy(voice->samples.data(),ptr(object.guestSamples,second),second);}
+        auto published=std::chrono::steady_clock::now();
+        if(object.lastPublish!=std::chrono::steady_clock::time_point{})object.maxPublishGap=std::max(object.maxPublishGap,
+            std::chrono::duration_cast<std::chrono::microseconds>(published-object.lastPublish));
+        object.lastPublish=published;
         object.locked=false;ret(0,5);return;}
     case 20:ret(0,1);return; // Software-owned buffers cannot be lost by the driver.
     default:throw GuestStop("DirectSound buffer method pending: "+std::to_string(method));

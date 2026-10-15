@@ -8,6 +8,9 @@
 #include <cstring>
 #include <thread>
 #include <chrono>
+#include <filesystem>
+#include <cstdlib>
+#include <unistd.h>
 #include "vertex_formats.h"
 #include "guest_memory.h"
 #include "game_data.h"
@@ -328,7 +331,21 @@ extern "C" JNIEXPORT void JNICALL Java_com_nfsu1_androidevolved_GameActivity_nat
     if(!entry){customVulkanError="No se pudo cargar el driver Vulkan "+l+". Elige el driver del sistema en el launcher.";return;}
     dxvkAndroidSetInstanceProcAddr(entry);
 }
+static void configurePipelineCache(android_app* app){
+    const char* files=app->activity->internalDataPath;
+    setenv("DXVK_STATE_CACHE","0",1); // Keep startup usable if cache storage is unavailable.
+    if(!files||!*files)return;
+    auto directory=std::filesystem::path(files).parent_path()/"cache"/"dxvk";
+    std::error_code error;std::filesystem::create_directories(directory,error);
+    if(error||access(directory.c_str(),W_OK)!=0){
+        __android_log_print(ANDROID_LOG_WARN,"NFSMW","DXVK pipeline state cache unavailable; continuing without it");return;
+    }
+    setenv("DXVK_STATE_CACHE_PATH",directory.c_str(),1);
+    setenv("DXVK_STATE_CACHE","1",1);
+    __android_log_print(ANDROID_LOG_INFO,"NFSMW","DXVK persistent pipeline state cache: %s",directory.c_str());
+}
 void android_main(android_app* app) {
+    configurePipelineCache(app);
     Host host; app->userData = &host; app->onAppCmd = onCommand;app->onInputEvent=onInput;
     try {
         testGuestMemory();

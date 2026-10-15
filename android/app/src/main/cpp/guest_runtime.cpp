@@ -5,6 +5,7 @@
 #include "guest_memory.h"
 #include "guest_heap.h"
 #include "runtime_log.h"
+#include "frame_pacer.h"
 #if defined(__ANDROID__) || defined(NFS_D3D9_BACKEND)
 #include "d3d9_bridge.h"
 #include "nfs_widescreen.h"
@@ -123,6 +124,10 @@ public:
         if(next_!=serving_)return false;
         ++next_;owner_=me;depth_=1;return true;
     }
+    bool hasWaiters(){
+        std::lock_guard<std::mutex> lock(m_);
+        return next_>serving_+1; // the current owner already holds one ticket
+    }
     void unlock(){
         {
             std::lock_guard<std::mutex> l(m_);
@@ -226,7 +231,7 @@ void checkGuestProgress() {
     if((++checkpoints&63u)==0){
         auto now=std::chrono::steady_clock::now();
         if(now>bootDeadline)throw GuestStop("CRT bring-up time budget reached at "+hex(g_cur_func));
-        if(now>=nextYield){yieldGuestMachine();nextYield=std::chrono::steady_clock::now()+std::chrono::microseconds(500);}
+        if(now>=nextYield){if(machine.hasWaiters())yieldGuestMachine();nextYield=std::chrono::steady_clock::now()+std::chrono::microseconds(500);}
     }
     if(!guestThreadFault.empty())throw GuestStop(guestThreadFault);
 }
@@ -312,13 +317,12 @@ void d3dDispatch(){uint32_t args[32];std::memcpy(args,ptr(g_esp+4,sizeof args),s
     if(timed){auto spent=std::chrono::steady_clock::now()-bridgeStart;bridgeTime+=token==0x7e002110u?spent:spent*64;presentTime+=token==0x7e002110u?spent:std::chrono::nanoseconds{};}
     if(token==0x7e002110u){nfs_widescreen_apply_frame_rate();lastPresentMs=steadyMs();startStallWatch();}
     if(token==0x7e002110u&&result==0){
-        static unsigned appliedLimit=0;static auto nextFrame=std::chrono::steady_clock::now();
-        unsigned cap=frameLimit.load(std::memory_order_relaxed);
+        static FramePacer pacer;
         auto now=std::chrono::steady_clock::now();
-        if(cap!=appliedLimit||now>nextFrame+std::chrono::milliseconds(200)){
-            appliedLimit=cap;nextFrame=now;
-        }
-        if(cap){nextFrame+=std::chrono::nanoseconds(1000000000ull/cap);if(nextFrame>now)yieldGuestMachine(0,nextFrame);}
+        auto deadline=pacer.deadline(now,frameLimit.load(std::memory_order_relaxed));
+        // The renderer has returned; guest audio/streaming workers can use the
+        // machine while this thread waits. Late frames incur no extra delay.
+        if(deadline>now)yieldGuestMachine(0,deadline);
         static unsigned frames=0;static auto since=std::chrono::steady_clock::now();
         if(++frames==120){serviceGuestSound();auto now=std::chrono::steady_clock::now();double seconds=std::chrono::duration<double>(now-since).count();
             NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Guest D3D9 presentation %.1f FPS over %.2f seconds; bridge ~%.2f ms/frame (present %.2f), %.0f calls/frame",
@@ -356,6 +360,17 @@ void testGuestScheduling(){
     machineLease->unlock();worker.join();machineLease->lock();original.load();lastError=savedError;tlsValues[1087]=savedTLS;
     if(!failure.empty())throw GuestStop(failure);
     NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Guest scheduler passed 100 handovers with separate integer, FS, x87, XMM, TLS and last-error state");
+}
+void testGuestSoundCaps(){
+    State saved;saved.save();
+    uint32_t output=allocate(96),device=createSoundObject(1);
+    write32(output,96);
+    uint32_t result=callGuest(soundMethodBase+0x1000+4*16,{device,output});
+    bool ok=result==0&&read32(output)==96&&read32(output+4)==0xf1f&&read32(output+8)==100&&
+        read32(output+12)==200000&&read32(output+16)==1&&read32(output+20)==0;
+    callGuest(soundMethodBase+0x1000+2*16,{device});heaps->free(GuestHeaps::process,output);saved.load();
+    if(!ok)throw GuestStop("DirectSound PCM capabilities regression");
+    NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSMW","DirectSound caps passed: mono/stereo, 8/16-bit, continuous rates, software buffers and guest ABI");
 }
 recomp_func_t resolveFunction(const std::string& dll, const std::string& name) {
     if((dll=="shfolder.dll"||dll=="shell32.dll")&&name=="SHGetFolderPathA")return shellFolderPath;
@@ -568,6 +583,7 @@ struct DispatchHash {
     void add(const recomp_dispatch_entry_t* table,uint32_t count){
         for(uint32_t i=0;i<count;++i){
             uint32_t va=table[i].address,s=slot(va);
+            if(va-0x7c000000u<0x04000000u)throw GuestStop("Lifted function overlaps reserved native dispatch stubs");
             while(keys[s])s=(s+1)&(slots-1);
             keys[s]=va;funcs[s]=table[i].func;
         }
@@ -589,6 +605,10 @@ struct DispatchHash {
 };
 }
 extern "C" recomp_func_t recomp_lookup(uint32_t va) {
+    // Sound/input/D3D COM and import stubs resolve in recomp_lookup_import.
+    // Avoid an always-failing hash probe on every native method call. The
+    // table constructor checks that no lifted module occupies this range.
+    if(va-0x7c000000u<0x04000000u)return nullptr;
     static const DispatchHash hash;
     return hash.find(va);
 }
@@ -663,6 +683,7 @@ std::string connectGuestRuntime(const char* executable) {
         write32(tib,0xffffffff); write32(tib+4,stackBase+stackSize); write32(tib+8,stackBase); write32(tib+0x18,tib);
         testGuestScheduling();
         testGuestInput();
+        testGuestSoundCaps();
         testGuestTimers();
         testGuestFileTime();
         testGuestCriticalSections();

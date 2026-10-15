@@ -131,8 +131,9 @@ void setD3D9Compatibility(bool cpuTextures,unsigned backBuffers){
 void configureD3D9Bridge(void* base,uint32_t (*allocator)(uint32_t),void (*deallocator)(uint32_t)){
     guestBase=base;allocateGuest=allocator;freeGuest=deallocator;
 #ifdef __ANDROID__
-    // Shader caches are optional; the Android process has no writable cwd.
-    setenv("DXVK_STATE_CACHE","0",1);
+    // android_main provides a writable private cache before creating DXVK.
+    // Other bring-up callers can still run without a writable working directory.
+    if(!std::getenv("DXVK_STATE_CACHE_PATH"))setenv("DXVK_STATE_CACHE","0",1);
     setenv("DXVK_LOG_PATH","none",1);
 #endif
 #ifndef __ANDROID__
