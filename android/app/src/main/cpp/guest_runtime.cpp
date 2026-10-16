@@ -287,7 +287,9 @@ void moduleHandle() {
     if(name.find('.')==std::string::npos) name+=".dll";
     if(uint32_t loaded=guestModuleHandle(name)) { ret(loaded,1); return; }
     auto module=modules.find(name);
-    NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Module lookup %s",name.c_str());
+    static std::set<std::string> loggedLookups;
+    if(loggedLookups.insert(name).second)
+        NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Module lookup %s",name.c_str());
     if(module==modules.end()) lastError=126;
     ret(module==modules.end()?0:module->second,1);
 }
@@ -575,6 +577,7 @@ namespace {
 // Every indirect call and virtual method resolves its target here, so use an
 // open-addressing table (built once, read-only afterwards) instead of a binary
 // search over ~28k entries with a cache miss per step.
+#include "guest_asset_guards.inc"
 struct DispatchHash {
     static constexpr uint32_t slots=1u<<16;
     std::unique_ptr<uint32_t[]> keys{new uint32_t[slots]()};
@@ -603,6 +606,10 @@ struct DispatchHash {
         return nullptr;
     }
 };
+}
+extern "C" void nfs_validate_asset_entry(uint32_t va){
+    if(va==0x00447c00u)validateResourceChunks(arg(2),arg(3));
+    else if(va==0x0059fb80u)validateLanguageTable();
 }
 extern "C" recomp_func_t recomp_lookup(uint32_t va) {
     // Sound/input/D3D COM and import stubs resolve in recomp_lookup_import.
@@ -687,6 +694,7 @@ std::string connectGuestRuntime(const char* executable) {
         testGuestTimers();
         testGuestFileTime();
         testGuestCriticalSections();
+        testGuestAssetGuards();
         // Restore a clean CPU state before executing the real CRT entry.
         fresh.load();
         NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Entering actual lifted CRT entry %08x",entry);

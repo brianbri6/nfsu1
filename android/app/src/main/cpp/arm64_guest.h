@@ -4,6 +4,14 @@
 #define RECOMP_GENERATED_CODE
 #include "recomp_types.h"
 // (The NFSU2 port intercepts its resolution selector here; Speed.exe has none hooked yet.)
+void nfs_validate_asset_entry(uint32_t va);
+#undef RECOMP_ENTER
+#define RECOMP_ENTER(va) do { \
+    g_cur_func=(va); RECOMP_FLAGS_IN(); \
+    if((va)==0x00447c00u||(va)==0x0059fb80u){ \
+        RECOMP_REGS_OUT(); nfs_validate_asset_entry(va); RECOMP_REGS_IN(); \
+    } \
+} while(0)
 static inline uint64_t nfs_guest_rdtsc(void) {
     struct timespec t;
     clock_gettime(CLOCK_MONOTONIC, &t);

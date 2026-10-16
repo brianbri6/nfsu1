@@ -335,14 +335,16 @@ static void configurePipelineCache(android_app* app){
     const char* files=app->activity->internalDataPath;
     setenv("DXVK_STATE_CACHE","0",1); // Keep startup usable if cache storage is unavailable.
     if(!files||!*files)return;
-    auto directory=std::filesystem::path(files).parent_path()/"cache"/"dxvk";
+    // Renderer cache epoch 2: avoid stale caches from the old DXVK preparation.
+    // Keep the directory name in sync with GraphicsCache.java.
+    auto directory=std::filesystem::path(files).parent_path()/"cache"/"dxvk-v2";
     std::error_code error;std::filesystem::create_directories(directory,error);
     if(error||access(directory.c_str(),W_OK)!=0){
-        __android_log_print(ANDROID_LOG_WARN,"NFSMW","DXVK pipeline state cache unavailable; continuing without it");return;
+        __android_log_print(ANDROID_LOG_WARN,"NFSU1","DXVK pipeline state cache unavailable; continuing without it");return;
     }
     setenv("DXVK_STATE_CACHE_PATH",directory.c_str(),1);
     setenv("DXVK_STATE_CACHE","1",1);
-    __android_log_print(ANDROID_LOG_INFO,"NFSMW","DXVK persistent pipeline state cache: %s",directory.c_str());
+    __android_log_print(ANDROID_LOG_INFO,"NFSU1","DXVK persistent pipeline state cache: %s",directory.c_str());
 }
 void android_main(android_app* app) {
     configurePipelineCache(app);

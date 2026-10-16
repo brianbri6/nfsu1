@@ -9,8 +9,12 @@ from the repository root:
 
 ```powershell
 git clone --branch native-1.9.2b https://github.com/Joshua-Ashton/dxvk-native.git ../reference/dxvk-native
-python ports/dxvk_android/prepare.py ../reference/dxvk-native build/dxvk-source
+python ports/dxvk_android/prepare.py ../reference/dxvk-native ../nfsu2-recompiled/build/dxvk-source
 ```
+
+The preparation script delegates to the sibling Underground 2 checkout's
+maintained recipe. Both Android applications consume that same prepared
+source; CMake checks its recipe hash before building.
 
 Run shader generation with Python, `glslangValidator` and `spirv-val` available
 in the same environment (the development setup uses Ubuntu/WSL):

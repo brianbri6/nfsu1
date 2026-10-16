@@ -63,6 +63,7 @@ final class Diagnostics {
     static String summary(Context context) {
         GpuDrivers.Driver driver = GpuDrivers.selected(context);
         return "NFSU1 Android Evolved " + ReleaseUpdates.installed(context)
+                + "\nAPK ABI: " + (Process.is64Bit() ? "arm64-v8a" : "armeabi-v7a")
                 + "\nTeléfono: " + Build.MANUFACTURER + " " + Build.MODEL
                 + "\nAndroid: " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")"
                 + "\nSoC: " + (Build.VERSION.SDK_INT >= 31 ? Build.SOC_MANUFACTURER + " " + Build.SOC_MODEL : Build.HARDWARE)

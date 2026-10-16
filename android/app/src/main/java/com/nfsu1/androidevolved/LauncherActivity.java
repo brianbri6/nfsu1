@@ -208,6 +208,7 @@ public final class LauncherActivity extends Activity {
             optionsList.addView(optionRow("Driver Vulkan", driver == null ? "Del sistema" : driver.name, this::chooseDriver));
         optionsList.addView(optionRow("Probar driver", "GPU y funciones Vulkan", () -> probeDriver(false)));
         optionsList.addView(optionRow("Idioma", languageLabel(), this::chooseLanguage));
+        optionsList.addView(optionRow("Reiniciar caché gráfica", "Regenerar shaders", () -> GraphicsCache.prompt(this)));
         for (GameOptions.Option option : GameOptions.ALL)
             optionsList.addView(optionRow(option.title, option.label(GameOptions.get(this, option.key)), () -> chooseOption(option)));
         optionsList.addView(optionRow("Servidor online", GameOptions.onlineServer(this), this::chooseOnlineServer));
