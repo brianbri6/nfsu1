@@ -107,16 +107,20 @@ private:
         bool up=buttons_[Up]||hatY_<-.5f,down=buttons_[Down]||hatY_>.5f;
         want[0xcb]=left;want[0xcd]=right;
         if(driving){
-            // Xbox-style racing: RT gas, LT brake/reverse, A handbrake, B nitrous,
-            // X camera, Y look back, RB/LB shift up/down, Start pause.
+            // Xbox-style racing on Underground's keyboard defaults (the same keys
+            // as the touch controls): RT gas, LT brake/reverse, A handbrake
+            // (LShift), B nitrous (Space), X camera (C), Y look back (B),
+            // RB/LB shift up/down (A/Z), Start pause.
             want[0xc8]=up||buttons_[R2]||past(rightTrigger_,0xc8);
             want[0xd0]=down||buttons_[L2]||past(leftTrigger_,0xd0);
-            want[0x39]=buttons_[A];want[0x38]=buttons_[B];want[0x2e]=buttons_[X];want[0x30]=buttons_[Y];
-            want[0x2a]=buttons_[R1];want[0x1d]=buttons_[L1];
+            want[0x2a]=buttons_[A];want[0x39]=buttons_[B];want[0x2e]=buttons_[X];want[0x30]=buttons_[Y];
+            want[0x1e]=buttons_[R1];want[0x2c]=buttons_[L1];
             want[0x01]=buttons_[Start]||buttons_[Select];
         }else{
             want[0xc8]=up||past(-stickY_,0xc8);want[0xd0]=down||past(stickY_,0xd0);
-            want[0x1c]=buttons_[A]||buttons_[Start];want[0x01]=buttons_[B]||buttons_[Select];
+            // Underground's menus go back with Backspace (the touch "back" key);
+            // Escape there is pause.
+            want[0x1c]=buttons_[A]||buttons_[Start];want[0x0e]=buttons_[B]||buttons_[Select];
             want[0x39]=buttons_[X];want[0x2a]=buttons_[Y];
         }
         driving_=driving;sentEmulation_=emulate_;

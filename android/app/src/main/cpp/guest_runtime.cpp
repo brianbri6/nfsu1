@@ -1,3 +1,4 @@
+#include <initializer_list>
 #include <set>
 #include <condition_variable>
 #include "guest_runtime.h"
@@ -115,14 +116,16 @@ public:
         if(owner_==me){++depth_;return;}
         const uint64_t ticket=next_++;
         cv_.wait(l,[&]{return serving_==ticket;});
-        owner_=me;depth_=1;
+        owner_=me;depth_=1;acquired=std::chrono::steady_clock::now();
     }
+    // When the current owner got the machine; only the owner reads it.
+    std::chrono::steady_clock::time_point acquired{};
     bool try_lock(){
         const auto me=std::this_thread::get_id();
         std::lock_guard<std::mutex> l(m_);
         if(owner_==me){++depth_;return true;}
         if(next_!=serving_)return false;
-        ++next_;owner_=me;depth_=1;return true;
+        ++next_;owner_=me;depth_=1;acquired=std::chrono::steady_clock::now();return true;
     }
     bool hasWaiters(){
         std::lock_guard<std::mutex> lock(m_);
@@ -219,6 +222,7 @@ void yieldGuestMachine(unsigned milliseconds=0,std::chrono::steady_clock::time_p
     else if(milliseconds)std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));else std::this_thread::yield();
     machineLease->lock();saved.load();
 }
+thread_local bool renderThread=false;
 void checkGuestProgress() {
     while(guestPaused.load()&&!stopRequested.load())yieldGuestMachine(20);
     if(stopRequested.load())throw GuestStop("Guest execution cancelled");
@@ -226,12 +230,19 @@ void checkGuestProgress() {
     // Keep cancellation immediate, but amortize full register saves and native
     // scheduler handovers over a short time slice rather than every call.
     // One time slice for whichever guest thread holds the machine.
+    //
+    // Slices count from when this thread acquired the machine (a shared
+    // deadline left the incoming thread an expired slice, so it handed the
+    // machine straight back). The render thread, the one presenting, gets
+    // 3 ms and the others 500 us: every handover wakes the queued threads in
+    // turn, and with 500 us slices the Underground 2 render thread spent 56%
+    // of its wall time waiting to get the machine back (Redmi Note 8).
     static unsigned checkpoints=0;
-    static auto nextYield=std::chrono::steady_clock::time_point::min();
     if((++checkpoints&63u)==0){
         auto now=std::chrono::steady_clock::now();
         if(now>bootDeadline)throw GuestStop("CRT bring-up time budget reached at "+hex(g_cur_func));
-        if(now>=nextYield){if(machine.hasWaiters())yieldGuestMachine();nextYield=std::chrono::steady_clock::now()+std::chrono::microseconds(500);}
+        auto slice=renderThread?std::chrono::microseconds(3000):std::chrono::microseconds(500);
+        if(now-machine.acquired>=slice){if(machine.hasWaiters())yieldGuestMachine();}
     }
     if(!guestThreadFault.empty())throw GuestStop(guestThreadFault);
 }
@@ -308,7 +319,10 @@ uint32_t d3dToken{};
 void direct3DCreate(){ret(createGuestD3D9(arg(0)),1);}
 void freeD3DGuest(uint32_t address){heaps->free(GuestHeaps::process,address);}
 void serviceGuestSound();
-void d3dDispatch(){uint32_t args[32];std::memcpy(args,ptr(g_esp+4,sizeof args),sizeof args);uint32_t count=0;uint32_t token=d3dToken;
+void d3dDispatch(){
+    // The arguments are read in place on the guest stack (one bounds check)
+    // instead of copying 128 bytes for each D3D9 call.
+    const uint32_t* args=static_cast<const uint32_t*>(ptr(g_esp+4,128));uint32_t count=0;uint32_t token=d3dToken;
     static uint64_t bridgeCalls=0;static std::chrono::nanoseconds bridgeTime{},presentTime{};
     // Time one call in 64 (and every Present) so the statistic does not cost
     // two clock reads on each of the ~40k calls in a race frame.
@@ -324,7 +338,9 @@ void d3dDispatch(){uint32_t args[32];std::memcpy(args,ptr(g_esp+4,sizeof args),s
         auto deadline=pacer.deadline(now,frameLimit.load(std::memory_order_relaxed));
         // The renderer has returned; guest audio/streaming workers can use the
         // machine while this thread waits. Late frames incur no extra delay.
+        renderThread=true;
         if(deadline>now)yieldGuestMachine(0,deadline);
+        else if(machine.hasWaiters())yieldGuestMachine();
         static unsigned frames=0;static auto since=std::chrono::steady_clock::now();
         if(++frames==120){serviceGuestSound();auto now=std::chrono::steady_clock::now();double seconds=std::chrono::duration<double>(now-since).count();
             NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Guest D3D9 presentation %.1f FPS over %.2f seconds; bridge ~%.2f ms/frame (present %.2f), %.0f calls/frame",
@@ -333,7 +349,11 @@ void d3dDispatch(){uint32_t args[32];std::memcpy(args,ptr(g_esp+4,sizeof args),s
     }ret(result,count);}
 #endif
 // threadStart: a thread procedure may be stdcall or cdecl; Windows exits the thread right after either.
-uint32_t callGuest(uint32_t va,const std::vector<uint32_t>& args,uint32_t cleanup=0,bool threadStart=false);
+uint32_t callGuest(uint32_t va,const uint32_t* args,size_t count,uint32_t cleanup,bool threadStart);
+// Braced argument lists stay on the host stack: callbacks run many times a
+// frame and a std::vector per call cost a malloc/free pair.
+inline uint32_t callGuest(uint32_t va,std::initializer_list<uint32_t> args,uint32_t cleanup=0,bool threadStart=false){return callGuest(va,args.begin(),args.size(),cleanup,threadStart);}
+inline uint32_t callGuest(uint32_t va,const std::vector<uint32_t>& args,uint32_t cleanup=0,bool threadStart=false){return callGuest(va,args.data(),args.size(),cleanup,threadStart);}
 #include "guest_threads.inc"
 #include "guest_files.inc"
 #include "guest_kernel.inc"
@@ -499,16 +519,16 @@ void loadImage(const char* path) {
     NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Guest PE mapped: base=%08x size=%08x entry=%08x; %zu imports bound; %u lifted functions",
         imageBase,imageSize,entry,imports.size(),recomp_dispatch_count);
 }
-uint32_t callGuest(uint32_t va, const std::vector<uint32_t>& args, uint32_t cleanup, bool threadStart) {
+uint32_t callGuest(uint32_t va, const uint32_t* args, size_t count, uint32_t cleanup, bool threadStart) {
     State saved; saved.save();
     try {
         recomp_func_t fn=recomp_lookup_manual(va);if(!fn)fn=recomp_lookup(va);
         if (!fn) fn=recomp_lookup_import(va);
         if (!fn) throw GuestStop("No guest function at " + hex(va));
-        for (auto it=args.rbegin();it!=args.rend();++it) { g_esp-=4; write32(g_esp,*it); }
+        for (size_t i=count;i--;) { g_esp-=4; write32(g_esp,args[i]); }
         g_esp-=4; write32(g_esp,RECOMP_RETADDR);
         fn(); g_esp+=cleanup;
-        if (g_esp!=saved.esp&&!(threadStart&&g_esp+4u*uint32_t(args.size())==saved.esp)) throw GuestStop("Guest call stack imbalance at " + hex(va));
+        if (g_esp!=saved.esp&&!(threadStart&&g_esp+4u*uint32_t(count)==saved.esp)) throw GuestStop("Guest call stack imbalance at " + hex(va));
         uint32_t result=g_eax; saved.load(); return result;
     } catch (...) { saved.load(); throw; }
 }
@@ -716,7 +736,16 @@ std::string connectGuestRuntime(const char* executable) {
     }
 }
 void requestGuestRuntimeStop() {stopRequested=true;}
-void setGuestPaused(bool paused) {guestPaused=paused;}
+void setGuestPaused(bool paused) {
+    // The AAudio stream keeps pulling from looping voices while the guest is
+    // paused: in the background the last mixed sound repeated until the app
+    // closed. Pause the output with the guest and restart it on resume.
+    bool previous=guestPaused.exchange(paused);
+    if(previous!=paused&&soundStream){
+        aaudio_result_t status=paused?AAudioStream_requestPause(soundStream):AAudioStream_requestStart(soundStream);
+        if(status!=AAUDIO_OK)NFS_RUNTIME_LOG(ANDROID_LOG_WARN,"NFS","Audio %s failed: %d",paused?"pause":"resume",int(status));
+    }
+}
 bool guestDrivingControls() {return inputDrivingMode.load();}
 void setGuestPad(const float axes[6],uint32_t buttons,int hatX,int hatY){
     std::lock_guard<std::mutex> lock(inputMutex);

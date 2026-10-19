@@ -21,7 +21,7 @@ final class GameOptions {
     }
 
     static final String RESOLUTION = "resolution", FPS = "fps", WIDESCREEN = "widescreen", LATENCY = "latency",
-            TEXTURES = "textures", MINIMAP = "minimap", LANGUAGE = "language";
+            TEXTURES = "textures", MINIMAP = "minimap", LANGUAGE = "language", GAMEPAD = "gamepad";
 
     static final Option[] ALL = {
             new Option(RESOLUTION, "Resolución interna", "75",
@@ -43,6 +43,12 @@ final class GameOptions {
             new Option(TEXTURES, "Texturas comprimidas", "auto",
                     new String[] {"auto", "cpu"},
                     new String[] {"Automático · GPU si las soporta", "Convertir en CPU · compatibilidad"}),
+            // As keyboard: RT accelerates, LT brakes, A handbrake, B nitrous, the
+            // layout players expect. The game's own joystick defaults put
+            // accelerate/brake on B/A (issue #45).
+            new Option(GAMEPAD, "Mando Bluetooth/USB", "keys",
+                    new String[] {"keys", "directinput"},
+                    new String[] {"Como teclado · RT acelera, LT frena", "Joystick DirectInput · mapeo del juego"}),
     };
 
     private static final String PREFS = "nfsu1_game";
