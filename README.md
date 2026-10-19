@@ -3,12 +3,12 @@
 
 ### Android downloads / Descargas Android
 
-[Underground 1 v0.2.3](https://github.com/codepdbh/nfsu1-recompiled/releases/tag/v0.2.3)
+[Underground 1 v0.2.4](https://github.com/codepdbh/nfsu1-recompiled/releases/tag/v0.2.4)
 
 | APK | Architecture |
 |---|---|
-| [ARM64 / 64 bits](https://github.com/codepdbh/nfsu1-recompiled/releases/download/v0.2.3/NFSU1-AndroidEvolved-v0.2.3-arm64.apk) | arm64-v8a, recommended |
-| [ARMv7 / 32 bits](https://github.com/codepdbh/nfsu1-recompiled/releases/download/v0.2.3/NFSU1-AndroidEvolved-v0.2.3-armeabi-v7a.apk) | armeabi-v7a; requires Android with 32-bit app support |
+| [ARM64 / 64 bits](https://github.com/codepdbh/nfsu1-recompiled/releases/download/v0.2.4/NFSU1-AndroidEvolved-v0.2.4-arm64.apk) | arm64-v8a, recommended |
+| [ARMv7 / 32 bits](https://github.com/codepdbh/nfsu1-recompiled/releases/download/v0.2.4/NFSU1-AndroidEvolved-v0.2.4-armeabi-v7a.apk) | armeabi-v7a; requires Android with 32-bit app support |
 
 Android 10+ and Vulkan 1.1+. Both APKs use the same package and signing key;
 install the architecture supported by your device. Original game data is required.
