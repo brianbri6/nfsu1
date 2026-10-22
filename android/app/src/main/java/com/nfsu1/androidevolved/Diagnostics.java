@@ -48,7 +48,7 @@ final class Diagnostics {
                 int reason = exit.getReason();
                 if (reason == ApplicationExitInfo.REASON_CRASH || reason == ApplicationExitInfo.REASON_CRASH_NATIVE
                         || reason == ApplicationExitInfo.REASON_ANR) {
-                    return (reason == ApplicationExitInfo.REASON_ANR ? "El juego dejó de responder" : "El juego se cerró inesperadamente")
+                    return (reason == ApplicationExitInfo.REASON_ANR ? "The game stopped responding" : "The game closed unexpectedly")
                             + (exit.getDescription() == null ? "" : " (" + exit.getDescription() + ")");
                 }
             }
@@ -64,15 +64,15 @@ final class Diagnostics {
         GpuDrivers.Driver driver = GpuDrivers.selected(context);
         return "NFSU1 Android Evolved " + ReleaseUpdates.installed(context)
                 + "\nAPK ABI: " + (Process.is64Bit() ? "arm64-v8a" : "armeabi-v7a")
-                + "\nTeléfono: " + Build.MANUFACTURER + " " + Build.MODEL
+                + "\nPhone: " + Build.MANUFACTURER + " " + Build.MODEL
                 + "\nAndroid: " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")"
                 + "\nSoC: " + (Build.VERSION.SDK_INT >= 31 ? Build.SOC_MANUFACTURER + " " + Build.SOC_MODEL : Build.HARDWARE)
-                + "\nDriver Vulkan: " + (driver == null ? "Sistema" : driver.name) + "\n";
+                + "\nVulkan driver: " + (driver == null ? "System" : driver.name) + "\n";
     }
 
     static File createReport(Context context) throws Exception {
         File directory = new File(context.getCacheDir(), "reports");
-        if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("No se pudo crear el informe.");
+        if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Could not create the report.");
         File[] old = directory.listFiles();
         if (old != null) for (File file : old)
             if (file.isFile() && file.lastModified() < System.currentTimeMillis() - TimeUnit.DAYS.toMillis(7)) file.delete();
@@ -80,8 +80,8 @@ final class Diagnostics {
         File report = new File(directory, "NFSU1-diagnostico-" + date + ".zip");
         try (ZipOutputStream zip = new ZipOutputStream(new FileOutputStream(report))) {
             StringBuilder info = new StringBuilder(summary(context));
-            info.append("Fecha: ").append(new Date()).append("\nABI: ").append(Arrays.toString(Build.SUPPORTED_ABIS))
-                    .append("\n\nOpciones:\n");
+            info.append("Date: ").append(new Date()).append("\nABI: ").append(Arrays.toString(Build.SUPPORTED_ABIS))
+                    .append("\n\nOptions:\n");
             for (GameOptions.Option option : GameOptions.ALL)
                 info.append(option.key).append('=').append(GameOptions.get(context, option.key)).append('\n');
             info.append("language=").append(GameOptions.language(context)).append('\n');
@@ -104,7 +104,7 @@ final class Diagnostics {
 
     // Lines that explain a stop, a stall or a missing piece of the Windows layer.
     private static final java.util.regex.Pattern KEY_LINE = java.util.regex.Pattern.compile(
-            "stopped|boundary|pendiente|unresolved|stall|  thread |FATAL|Fatal|SIGSEGV|SIGBUS|abort|DeadSystem|E DXVK|MessageBox"
+            "stopped|boundary|pending|pendiente|unresolved|stall|  thread |FATAL|Fatal|SIGSEGV|SIGBUS|abort|DeadSystem|E DXVK|MessageBox"
             // Native crash frames inside our libraries (symbolized later with symbols-vX.Y.Z).
             + "|#[01][0-9] pc [0-9a-f]+ .*libnfsu1");
     // Per-frame or per-file chatter that crowds out the useful part of the tail.
@@ -132,15 +132,15 @@ final class Diagnostics {
         }
         if (key.size() > 35) key = key.subList(key.size() - 35, key.size());
         if (tail.size() > 60) tail = tail.subList(tail.size() - 60, tail.size());
-        String title = "[Android] " + Build.MODEL + ": " + (crash == null ? "" : "cierre inesperado");
+        String title = "[Android] " + Build.MODEL + ": " + (crash == null ? "" : "unexpected crash");
         while (true) {
-            String body = "### Qué ocurrió\n" + (crash == null ? "" : crash + "\n") + "\n### Pasos para reproducirlo\n\n"
-                    + "### Dispositivo\n" + summary(context)
-                    + "\n### Registro completo\nGuardado en el móvil en **" + zipLocation
-                    + "**. Si puedes, adjúntalo aquí: arrástralo o toca \"Paste, drop, or click to add files\".\n"
-                    + "\n### Resumen técnico\n```\n" + String.join("\n", key)
-                    + (lastFrame == null ? "" : "\nÚltimo fotograma: " + lastFrame)
-                    + "\n--- últimas líneas del juego ---\n" + String.join("\n", tail) + "\n```\n";
+            String body = "### What happened\n" + (crash == null ? "" : crash + "\n") + "\n### Steps to reproduce\n\n"
+                    + "### Device\n" + summary(context)
+                    + "\n### Full log\nSaved on the phone at **" + zipLocation
+                    + "**. If possible, attach it here: drag it or tap \"Paste, drop, or click to add files\".\n"
+                    + "\n### Technical summary\n```\n" + String.join("\n", key)
+                    + (lastFrame == null ? "" : "\nLast frame: " + lastFrame)
+                    + "\n--- latest game log lines ---\n" + String.join("\n", tail) + "\n```\n";
             Uri uri = Uri.parse(ISSUES).buildUpon().appendQueryParameter("title", title).appendQueryParameter("body", body).build();
             if (uri.toString().length() <= URL_BUDGET || (tail.isEmpty() && key.size() <= 1)) return uri;
             if (!tail.isEmpty()) tail = tail.subList(Math.min(tail.size(), 5), tail.size());
@@ -156,17 +156,17 @@ final class Diagnostics {
         values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/NFSU1");
         android.content.ContentResolver resolver = context.getContentResolver();
         Uri target = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-        if (target == null) throw new IOException("No se pudo crear el archivo en Descargas.");
+        if (target == null) throw new IOException("Could not create the file in Downloads.");
         try (InputStream input = new java.io.FileInputStream(report);
              java.io.OutputStream output = resolver.openOutputStream(target, "w")) {
-            if (output == null) throw new IOException("No se pudo escribir en Descargas.");
+            if (output == null) throw new IOException("Could not write to Downloads.");
             byte[] buffer = new byte[65536];
             for (int n; (n = input.read(buffer)) != -1;) output.write(buffer, 0, n);
         } catch (IOException error) {
             resolver.delete(target, null, null);
             throw error;
         }
-        return "Descargas/NFSU1/" + report.getName();
+        return "Downloads/NFSU1/" + report.getName();
     }
 
     private static void add(ZipOutputStream zip, String name, byte[] data) throws IOException {
@@ -225,7 +225,7 @@ final class Diagnostics {
                                     readLimited(trace));
                             traceAdded = true;
                         }
-                    } catch (IOException error) { info.append("Traza no disponible: ").append(error).append('\n'); }
+                    } catch (IOException error) { info.append("Trace unavailable: ").append(error).append('\n'); }
                 }
             }
         } catch (RuntimeException error) { info.append(error); }
