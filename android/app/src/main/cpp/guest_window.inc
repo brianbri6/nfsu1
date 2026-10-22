@@ -1,3 +1,4 @@
+#include "guest_window_destroy.h"
 struct GuestWindowClass {uint32_t atom,procedure,instance,style,extra;std::string name;};
 struct GuestWindow {uint32_t procedure,instance,style,exstyle,parent,user=0,id=0,extra;int32_t x,y,width,height;bool visible;std::map<uint32_t,uint32_t> data;};
 std::map<std::string,GuestWindowClass> windowClasses;
@@ -154,3 +155,35 @@ void postMessage(){uint32_t hwnd=arg(0);if(hwnd&&!windows.count(hwnd)){lastError
     std::lock_guard<std::mutex> lock(messageMutex);windowMessages.push_back({hwnd,arg(1),arg(2),arg(3),messageTime()});ret(1,4);}
 void postQuitMessage(){std::lock_guard<std::mutex> lock(messageMutex);windowMessages.push_back({0,0x12,arg(0),0,messageTime()});ret(0,1);}
 void sendMessage(){if(!windows.count(arg(0))){lastError=1400;ret(0,4);return;}ret(windowMessage(arg(0),arg(1),arg(2),arg(3)),4);}
+
+// DestroyWindow is used by Speed.exe when leaving a race. Previously it fell
+// through to unsupported() and stopped the guest, while AAudio kept replaying
+// the last sample ring. Notify window procedures and release window resources.
+std::set<uint32_t> guestWindowsDestroying;
+void destroyWindow() {
+    uint32_t requested=arg(0);
+    auto onMessage=[&](uint32_t handle,uint32_t message) {
+        if(message==0x0002u&&activeWindow==handle) {
+            windowMessage(handle,0x0008u,0,0); // WM_KILLFOCUS
+            activeWindow=0;
+        }
+        windowMessage(handle,message,0,0);
+    };
+    auto onCleanup=[&](uint32_t handle) {
+        if(activeWindow==handle)activeWindow=0;
+        if(captureWindow==handle)captureWindow=0;
+        for(auto it=paintContexts.begin();it!=paintContexts.end();) {
+            if(it->second==handle)it=paintContexts.erase(it);
+            else ++it;
+        }
+        std::lock_guard<std::mutex> lock(messageMutex);
+        for(auto it=windowMessages.begin();it!=windowMessages.end();) {
+            if(it->hwnd==handle)it=windowMessages.erase(it);
+            else ++it;
+        }
+    };
+    bool result=destroyGuestWindowTree(windows,guestWindowsDestroying,requested,onMessage,onCleanup);
+    lastError=result?0:1400; // ERROR_INVALID_WINDOW_HANDLE
+    if(result)NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Guest window %08x destroyed",requested);
+    ret(result?1u:0u,1);
+}
