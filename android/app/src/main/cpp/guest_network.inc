@@ -146,7 +146,7 @@ void count(uint32_t handle,Socket& socket,const std::string& peer,bool sent,ssiz
     if(now<socket.nextSummary)return;
     socket.nextSummary=now+std::chrono::seconds(5);
     for(auto& [address,value]:socket.traffic)
-        NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Winsock: trafico %08x %s envia %u paq/%u B, recibe %u paq/%u B",handle,address.c_str(),value.sentPackets,value.sentBytes,value.receivedPackets,value.receivedBytes);
+        NFS_RUNTIME_LOG(ANDROID_LOG_INFO,"NFSU1","Winsock: traffic %08x %s sent %u packets/%u B, received %u packets/%u B",handle,address.c_str(),value.sentPackets,value.sentBytes,value.receivedPackets,value.receivedBytes);
     socket.traffic.clear();
 }
 bool hardError(ssize_t result){return result<0&&errno!=EAGAIN&&errno!=EWOULDBLOCK;}
