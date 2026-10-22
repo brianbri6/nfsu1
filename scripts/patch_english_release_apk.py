@@ -17,23 +17,11 @@ JAVA = "android/app/src/main/java/com/nfsu1/androidevolved/"
 QUOTED = re.compile(r'"(?:\\.|[^"\\])*"')
 SMALI = re.compile(r'(?m)^(?P<head>\s*const-string(?:/jumbo)?\s+[vp]\d+,\s*)"(?P<value>(?:\\.|[^"\\])*)"')
 IMMUTABLE = {"Spanish", "English", "French", "German", "Italian", "Dutch", "Swedish", "Korean", "Chinese"}
-NATIVE = {
- "Arranque CRT pendiente": "CRT startup pending",
- "Ejecutando entrada CRT del juego…": "Running game CRT...",
- "No se pudo cargar el driver Vulkan ": "Vulkan driver failed: ",
- ". Elige el driver del sistema en el launcher.": ". Select the system driver in launcher.",
- "Datos accesibles: memoria interna/nfsu1\nVulkan 1.1: presentación activa\n": "Game files: internal storage/nfsu1\nVulkan 1.1: active\n",
- "No se pudo abrir el driver seleccionado": "Could not open selected driver",
- "El paquete no ofrece vkGetInstanceProcAddr": "Missing vkGetInstanceProcAddr",
- "El paquete no ofrece vkCreateInstance": "Missing vkCreateInstance",
- "Driver con funciones Vulkan incompletas": "Vulkan driver missing functions",
- "No se encontró una GPU Vulkan": "No Vulkan GPU found",
- "Datos del juego invalidos: bloque de recursos fuera de memoria; revisa tu copia de NFS Underground 1": "Invalid game data: resource outside memory; check NFS Underground 1",
- "Datos del juego truncados: cabecera de recurso incompleta en ": "Truncated game data: bad resource header at ",
- "Datos del juego truncados: recurso ": "Truncated game data: resource ",
- " excede su bloque; revisa los archivos de tu copia de PC": " exceeds its block; check your PC game files",
- "Tabla de idioma vacia o invalida: revisa LANGUAGES y selecciona un idioma disponible de tu copia de NFS Underground 1": "Invalid language table: check LANGUAGES and your NFS Underground 1 files",
-}
+# Patch only the startup status literal to keep Android and native in sync.
+STARTUP_SPANISH = "Ejecutando entrada CRT del juego…"
+STARTUP_ENGLISH = "Running the game CRT entry point"
+NATIVE = {STARTUP_SPANISH: STARTUP_ENGLISH}
+
 def translations():
     mapping = {}
     files = subprocess.check_output(
@@ -103,13 +91,22 @@ def patch_smali(root, mapping):
             files += 1
     if not found_language:
         raise RuntimeError("GameOptions.language not found in APK")
-    if changes < 65:
+    if changes < 150:
         raise RuntimeError("Only %s UI strings patched; rejecting incomplete translation" % changes)
+    if mapping.get("Ejecutando entrada CRT") != STARTUP_ENGLISH:
+        raise RuntimeError("Android/native startup markers differ")
+    if "Ejecutando entrada CRT" not in used:
+        raise RuntimeError("Android startup marker was not patched")
     print("Translated %d literal occurrences in %d smali files; %d distinct translations" %
           (changes, files, len(used)))
     print("Source strings not present in DEX:", json.dumps(sorted(set(mapping) - used), ensure_ascii=False))
 
 def patch_native(root):
+    """Patch only complete NUL-terminated startup strings in native libraries.
+
+    Global ELF substring replacement can corrupt pooled/adjacent strings,
+    including strings accessed during game and race transitions.
+    """
     count = 0
     for path in root.glob("lib/**/*.so"):
         original = path.read_bytes()
@@ -117,20 +114,26 @@ def patch_native(root):
         for spanish, english in NATIVE.items():
             a, b = spanish.encode("utf-8"), english.encode("utf-8")
             if len(b) > len(a):
-                raise RuntimeError("Native replacement is too long: " + spanish)
-            if a in data:
-                count += data.count(a)
-                data = data.replace(a, b + b"\x00" * (len(a) - len(b)))
+                raise RuntimeError("Native replacement too long: " + spanish)
+            needle = a + b"\x00"
+            padded = b + b"\x00" * (len(a) - len(b)) + b"\x00"
+            hits = data.count(needle)
+            if hits:
+                count += hits
+                data = data.replace(needle, padded)
         if data != original:
             path.write_bytes(data)
-            print("Translated native messages in", path)
-    print("Native message replacements:", count)
+            print("Changed only the startup marker in", path)
+    if count != 1:
+        raise RuntimeError("Expected one native startup marker, found %d" % count)
+    print("Verified one native startup marker replacement")
+
 
 def patch_version(root):
     yml = root / "apktool.yml"
     content = yml.read_text(encoding="utf-8")
-    content, n1 = re.subn(r"(?m)^(\s*versionCode:\s*).+$", r"\g<1>'8'", content, count=1)
-    content, n2 = re.subn(r"(?m)^(\s*versionName:\s*).+$", r"\g<1>0.2.6", content, count=1)
+    content, n1 = re.subn(r"(?m)^(\s*versionCode:\s*).+$", r"\g<1>'9'", content, count=1)
+    content, n2 = re.subn(r"(?m)^(\s*versionName:\s*).+$", r"\g<1>0.2.7", content, count=1)
     if n1 != 1 or n2 != 1:
         raise RuntimeError("Cannot update APK version metadata")
     yml.write_text(content, encoding="utf-8")
