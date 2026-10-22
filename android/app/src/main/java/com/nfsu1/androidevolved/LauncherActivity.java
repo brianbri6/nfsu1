@@ -32,7 +32,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Launcher in the style of the MW and Carbon ports: game files and JUGAR on the left, options on the
+ * Launcher in the style of the MW and Carbon ports: game files and PLAY on the left, options on the
  * right (Vulkan driver, resolution, frame cap, widescreen, compatibility).
  */
 public final class LauncherActivity extends Activity {
@@ -117,7 +117,7 @@ public final class LauncherActivity extends Activity {
         columns.setPadding(dp(24), dp(10), dp(24), dp(10));
         screen.addView(columns, new FrameLayout.LayoutParams(-1, -1));
 
-        // Left: logo, game files and JUGAR.
+        // Left: logo, game files and PLAY.
         LinearLayout left = new LinearLayout(this);
         left.setOrientation(LinearLayout.VERTICAL);
         left.setGravity(Gravity.CENTER_HORIZONTAL);
