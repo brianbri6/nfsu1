@@ -40,6 +40,7 @@ jobs:
           echo '66cf4524a4a45a7f56567d08b2c9b6ec237bcdd78cee69fd4a59c8a0243aeafa  apktool.jar' | sha256sum -c -
           java -jar apktool.jar --version
           python -m py_compile scripts/patch_english_release_apk.py
+          python -m unittest discover -s tests -p 'test_english_apk_patcher.py' -v
 
       - name: Download and verify official v0.2.5 APKs
         shell: bash
@@ -86,11 +87,14 @@ jobs:
             python scripts/patch_english_release_apk.py "decoded-$ABI"
             java -jar apktool.jar b "decoded-$ABI" -o "unsigned-$ABI.apk"
             "$BUILD_TOOLS/zipalign" -p -f 4 "unsigned-$ABI.apk" "aligned-$ABI.apk"
-            OUT="outputs/NFSU1-AndroidEvolved-v0.2.6-English-$ABI.apk"
+            OUT="outputs/NFSU1-AndroidEvolved-v0.2.7-English-$ABI.apk"
             "$BUILD_TOOLS/apksigner" sign --ks english-release.jks --ks-key-alias english \
               --ks-pass env:KEY_PASS --key-pass env:KEY_PASS --out "$OUT" "aligned-$ABI.apk"
             "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$OUT"
+            "$BUILD_TOOLS/aapt" dump badging "$OUT" | grep "versionName='0.2.7'"
             unzip -t "$OUT" | tail -n 2
+            # Binary audit: the unchanged Vulkan probe library stays identical.
+            LIB=$(unzip -Z1 "upstream-$ABI.apk" | grep 'libnfsu1_diagnostics.so
             echo "::endgroup::"
           done
           ( cd outputs && sha256sum *.apk > SHA256SUMS.txt )
@@ -99,7 +103,7 @@ jobs:
         shell: bash
         run: |
           cat > outputs/RELEASE_NOTES.md <<'EOF'
-          ## NFS Underground 1 Android Evolved v0.2.6 — English UI
+          ## NFS Underground 1 Android Evolved v0.2.7 — English UI
 
           These APKs are patched directly from the original v0.2.5 releases by
           codepdbh/nfsu1-recompiled. This is a UI language modification, not a
@@ -107,8 +111,66 @@ jobs:
 
           - English launcher, options, buttons, touch controls and error messages.
           - Default language for fresh installations is English.
-          - Original graphics, audio, game logic and packaged native libraries are
-            otherwise retained; user-facing native messages are translated in place.
+          - Original graphics, audio, game logic, and native code are kept
+            intact. Only the NUL-terminated native startup-status marker is changed.
+          - Fixes an English string mismatch that prevented the diagnostic
+            overlay from auto-hiding after startup.
+          - Upstream story cutscene and between-race audio bugs are not fixed.
+          - Separate APKs for ARM64 and ARMv7 (Android 10+, Vulkan 1.1+).
+          - Requires your legally owned NFS Underground PC game data in nfsu1.
+
+          ### Installation / signing warning
+          The upstream developer's APK signing key is not publicly available.
+          Both APKs here have been **re-signed with the same new community build key**.
+          They **cannot update the upstream-signed version in place**. Android will
+          reject an in-place update because signatures differ. Back up saves/settings
+          before uninstalling the upstream APK; uninstalling may erase app data.
+
+          The v0.2.6 signing key was ephemeral and is unavailable, so these
+          APKs cannot update v0.2.6 in place. The new signing key is also
+          ephemeral unless it is configured as a repository secret. This release
+          has only automated structural/signature checks, not gameplay/device tests.
+
+          Source: https://github.com/brianbri6/nfsu1
+          Original binaries: https://github.com/codepdbh/nfsu1-recompiled/releases/tag/v0.2.5
+          EOF
+
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create v0.2.7 \
+            outputs/NFSU1-AndroidEvolved-v0.2.7-English-arm64.apk \
+            outputs/NFSU1-AndroidEvolved-v0.2.7-English-armeabi-v7a.apk \
+            outputs/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title 'NFSU1 Android Evolved v0.2.7 — English UI' \
+            --notes-file outputs/RELEASE_NOTES.md --prerelease
+ | head -1)
+            cmp <(unzip -p "upstream-$ABI.apk" "$LIB") <(unzip -p "$OUT" "$LIB")
+            echo "::endgroup::"
+          done
+          ( cd outputs && sha256sum *.apk > SHA256SUMS.txt )
+
+      - name: Create English release notes
+        shell: bash
+        run: |
+          cat > outputs/RELEASE_NOTES.md <<'EOF'
+          ## NFS Underground 1 Android Evolved v0.2.7 — English UI
+
+          These APKs are patched directly from the original v0.2.5 releases by
+          codepdbh/nfsu1-recompiled. This is a UI language modification, not a
+          new recompilation of the game.
+
+          - English launcher, options, buttons, touch controls and error messages.
+          - Default language for fresh installations is English.
+          - Original graphics, audio, game logic, and native code are kept
+            intact. Only the NUL-terminated native startup-status marker is changed.
+          - Fixes an English string mismatch that prevented the diagnostic
+            overlay from auto-hiding after startup.
+          - Upstream story cutscene and between-race audio bugs are not fixed.
           - Separate APKs for ARM64 and ARMv7 (Android 10+, Vulkan 1.1+).
           - Requires your legally owned NFS Underground PC game data in nfsu1.
 
@@ -133,10 +195,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release create v0.2.6 \
-            outputs/NFSU1-AndroidEvolved-v0.2.6-English-arm64.apk \
-            outputs/NFSU1-AndroidEvolved-v0.2.6-English-armeabi-v7a.apk \
+          gh release create v0.2.7 \
+            outputs/NFSU1-AndroidEvolved-v0.2.7-English-arm64.apk \
+            outputs/NFSU1-AndroidEvolved-v0.2.7-English-armeabi-v7a.apk \
             outputs/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title 'NFSU1 Android Evolved v0.2.6 — English UI' \
+            --title 'NFSU1 Android Evolved v0.2.7 — English UI' \
             --notes-file outputs/RELEASE_NOTES.md --prerelease
