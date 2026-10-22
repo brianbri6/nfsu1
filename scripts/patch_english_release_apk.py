@@ -49,7 +49,7 @@ def translations():
                         raise RuntimeError("Conflicting translation " + repr(s))
                     mapping[s] = t
     mapping["Español"] = "Spanish"
-    mapping["Ejecutando entrada CRT"] = "Running game CRT"
+    mapping["Ejecutando entrada CRT"] = STARTUP_ENGLISH
     return mapping
 
 def patch_smali(root, mapping):
