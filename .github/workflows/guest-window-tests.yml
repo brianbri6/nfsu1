@@ -1,0 +1,30 @@
+name: Verify guest window teardown
+on:
+  push:
+    branches: [main, fix-nfsu1-race-transition-destroywindow]
+    paths:
+      - 'android/app/src/main/cpp/guest_window.inc'
+      - 'android/app/src/main/cpp/guest_window_destroy.h'
+      - 'android/app/src/main/cpp/guest_kernel.inc'
+      - 'tests/guest_window_destroy.cpp'
+      - '.github/workflows/guest-window-tests.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  destroy-window:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and run native window teardown test
+        run: |
+          set -euo pipefail
+          c++ -std=c++17 -Wall -Wextra -Werror -O2 \
+            tests/guest_window_destroy.cpp -o /tmp/guest_window_destroy
+          /tmp/guest_window_destroy
+      - name: Verify runtime API binding
+        run: |
+          set -euo pipefail
+          grep -F '{"DestroyWindow",destroyWindow}' android/app/src/main/cpp/guest_kernel.inc
+          grep -F 'void destroyWindow()' android/app/src/main/cpp/guest_window.inc
+          grep -F '#include "guest_window_destroy.h"' android/app/src/main/cpp/guest_window.inc
