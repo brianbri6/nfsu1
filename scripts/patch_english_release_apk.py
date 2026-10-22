@@ -73,7 +73,11 @@ def patch_smali(root, mapping):
         source = path.read_text(encoding="utf-8")
         def replace(m):
             nonlocal changes
-            value = m["value"]
+            value = re.sub(
+                r'\\u([0-9a-fA-F]{4})',
+                lambda match: chr(int(match.group(1), 16)),
+                m["value"]
+            )
             if value not in mapping:
                 return m.group(0)
             changes += 1
