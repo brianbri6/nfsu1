@@ -1,0 +1,141 @@
+name: Publish NFSU1 English APKs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/english-apk-release.yml'
+      - 'scripts/patch_english_release_apk.py'
+      - 'android/app/src/main/java/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nfsu1-english-apk-release
+  cancel-in-progress: false
+
+jobs:
+  patch-sign-release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install and verify Apktool
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-delay 4 \
+            'https://github.com/iBotPeaches/Apktool/releases/download/v2.12.1/apktool_2.12.1.jar' -o apktool.jar
+          echo '66cf4524a4a45a7f56567d08b2c9b6ec237bcdd78cee69fd4a59c8a0243aeafa  apktool.jar' | sha256sum -c -
+          java -jar apktool.jar --version
+          python -m py_compile scripts/patch_english_release_apk.py
+
+      - name: Download and verify official v0.2.5 APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-delay 4 \
+            'https://github.com/codepdbh/nfsu1-recompiled/releases/download/v0.2.5/NFSU1-AndroidEvolved-v0.2.5-arm64.apk' -o upstream-arm64.apk
+          echo 'b9768b8db1bb42881f4f6257edeeb46237839310abd790a0156ff3fa3ad743f0  upstream-arm64.apk' | sha256sum -c -
+          curl -fL --retry 3 --retry-delay 4 \
+            'https://github.com/codepdbh/nfsu1-recompiled/releases/download/v0.2.5/NFSU1-AndroidEvolved-v0.2.5-armeabi-v7a.apk' -o upstream-armeabi-v7a.apk
+          echo 'f7855648d1110a3661ea4ed2d17b30df9989d3f84e0313075bcbf22e5383563d  upstream-armeabi-v7a.apk' | sha256sum -c -
+
+      - name: Locate signing tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          TOOLS=$(find "$SDK/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          test -x "$TOOLS/zipalign"
+          test -x "$TOOLS/apksigner"
+          echo "BUILD_TOOLS=$TOOLS" >> "$GITHUB_ENV"
+
+      - name: Create release signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          PASS=$(openssl rand -hex 24)
+          echo "::add-mask::$PASS"
+          echo "KEY_PASS=$PASS" >> "$GITHUB_ENV"
+          keytool -genkeypair -keystore english-release.jks -alias english \
+            -keyalg RSA -keysize 3072 -validity 3650 -storetype PKCS12 \
+            -storepass "$PASS" -keypass "$PASS" \
+            -dname "CN=NFSU1 English Community, O=NFSU1, C=US"
+
+      - name: Patch, rebuild and verify both architectures
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs
+          for ABI in arm64 armeabi-v7a; do
+            echo "::group::Patching $ABI"
+            java -jar apktool.jar d -f -r "upstream-$ABI.apk" -o "decoded-$ABI"
+            python scripts/patch_english_release_apk.py "decoded-$ABI"
+            java -jar apktool.jar b "decoded-$ABI" -o "unsigned-$ABI.apk"
+            "$BUILD_TOOLS/zipalign" -p -f 4 "unsigned-$ABI.apk" "aligned-$ABI.apk"
+            OUT="outputs/NFSU1-AndroidEvolved-v0.2.6-English-$ABI.apk"
+            "$BUILD_TOOLS/apksigner" sign --ks english-release.jks --ks-key-alias english \
+              --ks-pass env:KEY_PASS --key-pass env:KEY_PASS --out "$OUT" "aligned-$ABI.apk"
+            "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$OUT"
+            unzip -t "$OUT" | tail -n 2
+            echo "::endgroup::"
+          done
+          ( cd outputs && sha256sum *.apk > SHA256SUMS.txt )
+
+      - name: Create English release notes
+        shell: bash
+        run: |
+          cat > outputs/RELEASE_NOTES.md <<'EOF'
+          ## NFS Underground 1 Android Evolved v0.2.6 — English UI
+
+          These APKs are patched directly from the original v0.2.5 releases by
+          codepdbh/nfsu1-recompiled. This is a UI language modification, not a
+          new recompilation of the game.
+
+          - English launcher, options, buttons, touch controls and error messages.
+          - Default language for fresh installations is English.
+          - Original graphics, audio, game logic and packaged native libraries are
+            otherwise retained; user-facing native messages are translated in place.
+          - Separate APKs for ARM64 and ARMv7 (Android 10+, Vulkan 1.1+).
+          - Requires your legally owned NFS Underground PC game data in nfsu1.
+
+          ### Installation / signing warning
+          The upstream developer's APK signing key is not publicly available.
+          Both APKs here have been **re-signed with the same new community build key**.
+          They **cannot update the upstream-signed version in place**. Android will
+          reject an in-place update because signatures differ. Back up saves/settings
+          before uninstalling the upstream APK; uninstalling may erase app data.
+
+          The new signing key is ephemeral to this workflow run; subsequent builds
+          cannot update these APKs unless the signing key is retained. This release
+          has only automated structural/signature checks, not gameplay/device tests.
+
+          Source: https://github.com/brianbri6/nfsu1
+          Original binaries: https://github.com/codepdbh/nfsu1-recompiled/releases/tag/v0.2.5
+          EOF
+
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create v0.2.6 \
+            outputs/NFSU1-AndroidEvolved-v0.2.6-English-arm64.apk \
+            outputs/NFSU1-AndroidEvolved-v0.2.6-English-armeabi-v7a.apk \
+            outputs/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title 'NFSU1 Android Evolved v0.2.6 — English UI' \
+            --notes-file outputs/RELEASE_NOTES.md --prerelease
