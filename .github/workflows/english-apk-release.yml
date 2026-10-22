@@ -81,7 +81,8 @@ jobs:
           mkdir -p outputs
           for ABI in arm64 armeabi-v7a; do
             echo "::group::Patching $ABI"
-            java -jar apktool.jar d -f -r "upstream-$ABI.apk" -o "decoded-$ABI"
+            java -jar apktool.jar d -f "upstream-$ABI.apk" -o "decoded-$ABI"
+            sed -n '1,90p' "decoded-$ABI/apktool.yml"
             python scripts/patch_english_release_apk.py "decoded-$ABI"
             java -jar apktool.jar b "decoded-$ABI" -o "unsigned-$ABI.apk"
             "$BUILD_TOOLS/zipalign" -p -f 4 "unsigned-$ABI.apk" "aligned-$ABI.apk"
